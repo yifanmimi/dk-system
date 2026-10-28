@@ -213,6 +213,7 @@ button:disabled{opacity:.5;cursor:default}
 .ix tbody tr:hover{background:#f7fafd;cursor:pointer}
 .ix tr.cx td{color:#9aa4ae;text-decoration:line-through}
 .st{font-size:12px;padding:1px 7px;border-radius:10px;white-space:nowrap}
+.gd{display:inline-block;font-size:12px;font-weight:600;min-width:1.6em;text-align:center;padding:0 4px;border-radius:4px}.gd.g甲{background:#e6f4ea;color:#2e7d4f}.gd.g乙{background:#fff4e0;color:#9a5b00}.gd.g丙{background:#fdecea;color:#b03a2e}
 .st.已排定{background:#e8f0fa;color:#1f5fa8}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
 .tbl{max-height:calc(100vh - 230px);overflow:auto;border:1px solid var(--line);border-radius:8px}
 .cnt{color:var(--mute);font-size:13px}
@@ -277,6 +278,7 @@ button:disabled{opacity:.5;cursor:default}
 .hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
 .note2{font-size:12px;color:var(--mute);margin-top:6px}
 .rocd{position:relative;display:inline-flex;align-items:center;gap:2px;min-width:0}.rocd input[type=text]{flex:1;min-width:7.5em;width:100%}
+.stf .rocd input[type=text]{width:7.5em;flex:none;min-width:0}
 .rocd input.bad{border-color:#d93025;background:#fff4f4}.rocd .rocb{border:1px solid var(--line,#d5dbe1);background:#fff;border-radius:6px;padding:4px 6px;cursor:pointer;line-height:1}
 .rocd input[type=date]{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0}
 .cinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;font-size:13px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:8px 10px}
@@ -342,7 +344,7 @@ button:disabled{opacity:.5;cursor:default}
       <select id="fMonth"><option value="">全部月份</option></select>
       <select id="fType"><option value="">全部項目</option></select>
       <select id="fUnit"><option value="">全部單位</option></select>
-      <select id="fStatus"><option value="">全部狀態</option><option>已排定</option><option>待登錄結果</option><option>已登錄結果</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
+      <select id="fStatus"><option value="">全部狀態</option><option>已排定</option><option value="待登錄結果">待登錄</option><option value="已登錄結果">已登錄</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
       <input id="fKey" placeholder="搜尋工程名稱、委員、編號…" style="min-width:220px">
       <span class="sp"></span><span class="cnt" id="listCnt"></span>
       <button class="b" id="btnCsv">下載 CSV</button><button class="b" id="btnXlsx">下載 Excel</button>
@@ -357,7 +359,7 @@ button:disabled{opacity:.5;cursor:default}
     <div class="cols">
       <div class="card dl"><h3>📝 紀錄表繳交期限（未來 14 天）</h3><div id="dueRec"></div></div>
       <div class="card dl"><h3>⚠️ 報部改善期限（未完成）</h3><div id="dueImp"></div></div>
-      <div class="card dl"><h3>⏳ 待登錄結果（已辦理、尚無成績與缺失）</h3><div id="duePend"></div></div>
+      <div class="card dl"><h3>⏳ 待登錄（已辦理、尚無成績與缺失）</h3><div id="duePend"></div></div>
     </div>
   </section>
 
@@ -1674,6 +1676,12 @@ function applyPerms() {
   }
 }
 /** 日期顯示：日期未定者顯示「未定（11 月）」 */
+/* 狀態標籤：縮短文字；已登錄者加上等第（80 以上甲、70–79 乙、未滿 70 丙） */
+function stBadge(c) {
+  const short = { '待登錄結果': '待登錄', '已登錄結果': '已登錄' }[c.狀態] || c.狀態;
+  const n = parseFloat(c.成績), g = c.狀態 === '已登錄結果' && !isNaN(n) ? (n >= 80 ? '甲' : n >= 70 ? '乙' : '丙') : '';
+  return '<span class="st ' + c.狀態 + '">' + short + '</span>' + (g ? ' <span class="gd g' + g + '" title="成績 ' + c.成績 + '">' + g + '</span>' : '');
+}
 const dateText = c => R(c.日期) || ('<span class="soon">日期未定</span>' + (c.預定月份 ? '（' + (+c.預定月份.slice(5, 7)) + ' 月）' : ''));
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const pad = n => ('0' + n).slice(-2);
@@ -1949,7 +1957,7 @@ function renderList() {
   $('listBody').innerHTML = list.map(c => '<tr data-id="' + c.案件編號 + '"' + (c.狀態 === '已取消' || c.狀態 === '已作廢' ? ' class="cx"' : '') + '>' +
     '<td>' + dateText(c) + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
     '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td>' +
-    '<td><span class="st ' + c.狀態 + '">' + c.狀態 + '</span></td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
+    '<td>' + stBadge(c) + '</td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
     '<tr><td colspan="9" class="cnt">沒有符合條件的案件</td></tr>';
 }
 ['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
@@ -2116,9 +2124,9 @@ function renderStats() {
   const scored = live.filter(c => c[SI.score] !== '');
   $('stInfo').textContent = '資料時間：' + R(S.stat.loadedAt) + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + (F.range ? (R(F.from) || '最早') + '～' + (R(F.to) || '最新') : F.ys.join('、') + ' 年度') + (F.ty.length ? '｜' + F.ty.join('、') : '') + (F.un ? '｜' + F.un : F.kd ? '｜全部' + F.kd : '');
   // 1. 執行概況
-  tiles('stTiles1', [['排定件數（不含取消）', live.length], ['已辦理', done.length], ['已登錄結果', res.length], ['待登錄結果', done.length - res.length], ['已取消', all.length - live.length]]);
+  tiles('stTiles1', [['排定件數（不含取消）', live.length], ['已辦理', done.length], ['已登錄', res.length], ['待登錄', done.length - res.length], ['已取消', all.length - live.length]]);
   const types = [...new Set(all.map(c => c[SI.type]))];
-  table('tbType', ['項目', '排定', '已辦理', '已登錄結果', '待登錄結果', '已取消'], types.map(t => {
+  table('tbType', ['項目', '排定', '已辦理', '已登錄', '待登錄', '已取消'], types.map(t => {
     const a = all.filter(c => c[SI.type] === t), l = a.filter(c => c[SI.st] !== '已取消');
     const d = l.filter(c => c[SI.st] !== '已排定'), r = l.filter(c => c[SI.st] === '已登錄結果');
     return [t, l.length, d.length, r.length, d.length - r.length, a.length - l.length];
@@ -2127,7 +2135,7 @@ function renderStats() {
   bars('stMonth', 'stMonthX', Array.from({ length: 12 }, (_, i) => (i + 1) + '月'), mon, '件');
   if (F.ys.length > 1 && !F.range) {
     $('stYearBox').innerHTML = '<div class="cnt" style="margin:12px 0 4px">年度比較</div><table class="st" id="tbYear"></table>';
-    table('tbYear', ['年度', '排定', '已登錄結果', '平均成績', '甲等比例', '平均缺失數'], F.ys.slice().sort().map(y => {
+    table('tbYear', ['年度', '排定', '已登錄', '平均成績', '甲等比例', '平均缺失數'], F.ys.slice().sort().map(y => {
       const l = live.filter(c => c[SI.y] === y), sc = l.filter(c => c[SI.score] !== '').map(c => c[SI.score]), dd = l.filter(c => c[SI.def] > 0);
       return [y, l.length, l.filter(c => c[SI.st] === '已登錄結果').length, fmt(avg(sc), 1), pct(sc.filter(x => x >= 80).length, sc.length), fmt(avg(dd.map(c => c[SI.def])), 1)];
     }), { num: [1, 2, 3, 4, 5] });
@@ -2224,7 +2232,7 @@ function openCase(id, date) {
   S.editing = c;
   const ro = !canEdit();
   $('dlgTitle').textContent = c ? c.工程名稱 : '新增行程';
-  $('dlgStatus').innerHTML = c ? '<span class="st ' + c.狀態 + '">' + c.狀態 + '</span>' + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
+  $('dlgStatus').innerHTML = c ? stBadge(c) + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
   FIELDS.forEach(f => { $('c' + f).value = c ? (c[f] || '') : ''; $('c' + f).disabled = ro; });
   $('c改善完成').checked = !!(c && c.改善完成 === true); $('c改善完成').disabled = ro;
   if (!c && date) $('c日期').value = date;
