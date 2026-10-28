@@ -270,6 +270,10 @@ button:disabled{opacity:.5;cursor:default}
 .ix table.st tr.click{cursor:pointer}
 .hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
 .note2{font-size:12px;color:var(--mute);margin-top:6px}
+.sttabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line,#e1e5ea)}
+.sttabs button{border:0;background:none;padding:8px 14px;font-size:14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.sttabs button.on{color:var(--pri,#1f5fa8);border-bottom-color:var(--pri,#1f5fa8);font-weight:600}
+.sttabs button.hide{display:none}
 .perms{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:8px}
 .perms fieldset{border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:6px 10px;margin:0}
 .perms legend{font-size:12px;color:var(--mute);padding:0 4px}
@@ -379,28 +383,31 @@ button:disabled{opacity:.5;cursor:default}
       <select id="stKind"><option value="">全部單位別</option><option>管理處</option><option>縣市政府</option></select>
       <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
     </div>
+    <div class="sttabs" id="stTabs">
+      <button data-st="1" class="on">年度執行概況</button><button data-st="2">成績與等第</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
+    </div>
     <div class="stgrid">
-      <div class="card"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button></h3>
+      <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button></h3>
         <div class="tiles" id="stTiles1"></div>
         <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
           <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div></div></div>
       </div>
-      <div class="card"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button></h3>
+      <div class="card hide" data-st="2"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button></h3>
         <div class="tiles" id="stTiles2"></div>
         <div class="two"><div><table class="st" id="tbGrade"></table><div class="note2">等第沿用原統計表：80 分以上甲、70–79 乙、未滿 70 丙。</div></div>
           <div><div class="cnt" style="margin-bottom:4px">成績分布（每 5 分一級）</div><div class="bars" id="stHist"></div><div class="barx" id="stHistX"></div></div></div>
       </div>
-      <div class="card"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button></h3>
+      <div class="card hide" data-st="3"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbUnit"></table></div>
         <div class="note2">點欄名可排序。平均缺失數只計已建立缺失的案件（排除「缺失未建立」），避免低估。</div>
       </div>
-      <div class="card"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button></h3>
+      <div class="card hide" data-st="4"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button></h3>
         <div class="tiles" id="stTiles4"></div>
         <div class="two"><div><table class="st" id="tbSec"></table></div><div><table class="st" id="tbLevel"></table></div></div>
         <div class="cnt" style="margin:12px 0 4px">最常見缺失代碼前 20 名（點選列可看實際案例）</div>
         <table class="st" id="tbCode"></table>
       </div>
-      <div class="card" id="stComBox"><h3>5. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button></h3>
+      <div class="card hide" id="stComBox" data-st="5"><h3>5. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbCom"></table></div>
         <div class="note2">以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
       </div>
@@ -1915,11 +1922,21 @@ function initStatFilters() {
   S.statYears = cur;
   $('stYears').innerHTML = ys.map(y => '<label><input type="checkbox" value="' + y + '"' + (cur.indexOf(y) >= 0 ? ' checked' : '') + '> ' + y + '</label>').join('');
   if ($('stType').options.length <= 1) $('stType').innerHTML = '<option value="">全部項目</option>' + (S.refs ? S.refs.types : []).map(t => '<option>' + t + '</option>').join('');
-  $('stComBox').classList.toggle('hide', !!S.stat.committeeHidden);
+  $('stTabCom').classList.toggle('hide', !!S.stat.committeeHidden);
+  showStatTab();
   renderStats();
 }
 $('stYears').addEventListener('change', () => { S.statYears = [...$('stYears').querySelectorAll('input:checked')].map(i => +i.value); renderStats(); });
 $('stType').onchange = $('stKind').onchange = () => renderStats();
+/* 統計分頁：一次只顯示一項統計（記住上次選的分頁） */
+function showStatTab(n) {
+  if (n) { try { localStorage.setItem('dk_stat_tab', n); } catch (e) { } }
+  n = n || (() => { try { return localStorage.getItem('dk_stat_tab'); } catch (e) { return null; } })() || '1';
+  if (n === '5' && S.stat && S.stat.committeeHidden) n = '1';
+  [...$('stTabs').querySelectorAll('button')].forEach(b => b.classList.toggle('on', b.dataset.st === n));
+  [...document.querySelectorAll('#v-stat .stgrid > .card')].forEach(c => c.classList.toggle('hide', c.dataset.st !== n));
+}
+$('stTabs').addEventListener('click', e => { const b = e.target.closest('button[data-st]'); if (b) showStatTab(b.dataset.st); });
 $('stFrom').onchange = $('stTo').onchange = () => renderStats();
 $('stClr').onclick = () => { $('stFrom').value = ''; $('stTo').value = ''; renderStats(); };
 /* 篩選：有填日期區間就依日期（日期未定的案件不列入），否則依勾選的年度 */
@@ -2015,7 +2032,7 @@ function renderStats() {
     r._attr = ' class="click" data-code="' + k + '"'; return r;
   }), { num: [0, 4, 5, 6, 7, 8] });
   // 5. 委員
-  if (!$('stComBox').classList.contains('hide')) {
+  if (!S.stat.committeeHidden) {
     const com = {};
     done.forEach(c => [c[SI.c1], c[SI.c2]].filter(Boolean).forEach(n => { const o = com[n] = com[n] || { n: 0, sc: [], df: [] }; o.n++; if (c[SI.score] !== '') o.sc.push(c[SI.score]); if (c[SI.def] > 0) o.df.push(c[SI.def]); }));
     table('tbCom', ['委員', '出席件數', '有成績', '平均成績', '最高', '最低', '平均缺失數'], Object.keys(com).map(n => {
