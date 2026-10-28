@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>督導查核系統</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+#dkLogin{position:fixed;inset:0;background:#f5f6f8;z-index:200;display:flex;align-items:center;justify-content:center}
+#dkLogin.dk-hide{display:none}
+#dkLogin .box{background:#fff;border:1px solid #e1e5ea;border-radius:10px;padding:28px 32px;text-align:center;max-width:420px}
+#dkLogin h1{font-size:20px;margin:0 0 6px}#dkLogin p{color:#6b7785;font-size:13px;margin:6px 0 16px}
+#dkLoginBtn{display:flex;justify-content:center;min-height:44px}
+</style>
+<script>window.DK_CONFIG = {"clientId": "613511728115-nvejdmclatm6vni6p56isj5pf1681mg5.apps.googleusercontent.com", "backUrl": "https://script.google.com/macros/s/AKfycbwvRoyKAF7MFZwImiTja-SCBc46PafjhOoMqdm8fmfBXsf79wHIWz9VuyV-N5fgfXYy/exec"};</script>
+<script>
+/* =====================================================================
+ * 督導查核系統（網頁版）— 登入與後台連線
+ * ---------------------------------------------------------------------
+ * 本檔公開於 GitHub Pages，不含任何金鑰或資料。
+ *   1. 以 Google 帳號登入（Google Identity Services），只取得 Email 身分證明（ID Token）
+ *   2. 每次讀寫都把身分證明送到後台 API；後台向 Google 核對、查「使用者」表確認角色後才處理
+ *   3. 提供與 Apps Script 相同的 google.script.run 介面，主程式不必改寫
+ * ===================================================================== */
+(function () {
+  const CFG = window.DK_CONFIG;
+  const TK = 'dk_tok';
+  let waiters = [];
+  let gisReady = false;
+
+  const decode = t => {
+    try { return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))))); }
+    catch (e) { return null; }
+  };
+  function current() {
+    try {
+      const t = sessionStorage.getItem(TK); if (!t) return null;
+      const p = decode(t); if (!p || p.exp * 1000 < Date.now() + 120000) return null;   // 剩不到 2 分鐘就視為過期
+      return { token: t, email: p.email, name: p.name || '' };
+    } catch (e) { return null; }
+  }
+  /** 換人登入時清除前一位使用者在本機的暫存資料 */
+  function clearLocal() {
+    try { Object.keys(localStorage).filter(k => k.indexOf('dk_') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) { }
+  }
+  function onCredential(resp) {
+    const p = decode(resp.credential);
+    if (!p || !p.email) return;
+    try {
+      if (localStorage.getItem('dk_user') !== p.email) { clearLocal(); localStorage.setItem('dk_user', p.email); }
+      sessionStorage.setItem(TK, resp.credential);
+    } catch (e) { }
+    hideLogin();
+    const w = waiters; waiters = [];
+    w.forEach(f => f());
+  }
+  function showLogin(msg) {
+    const ov = document.getElementById('dkLogin');
+    if (!ov) return;
+    ov.classList.remove('dk-hide');
+    if (msg) document.getElementById('dkLoginMsg').textContent = msg;
+    if (gisReady) {
+      google.accounts.id.renderButton(document.getElementById('dkLoginBtn'), { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'zh-TW' });
+      google.accounts.id.prompt();
+    }
+  }
+  function hideLogin() { const ov = document.getElementById('dkLogin'); if (ov) ov.classList.add('dk-hide'); }
+  /** 取得有效的身分證明；沒有就顯示登入畫面並等待 */
+  function token() {
+    const c = current();
+    if (c) return Promise.resolve(c.token);
+    return new Promise(res => {
+      waiters.push(() => res(current().token));
+      showLogin('登入逾時或尚未登入，請以 Google 帳號登入');
+    });
+  }
+  /** 呼叫後台 API（失效的身分證明會自動要求重新登入再試一次） */
+  async function call(action, args, retried) {
+    const t = await token();
+    const res = await fetch(CFG.backUrl, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 簡單請求，避免跨網域預檢
+      body: JSON.stringify({ idToken: t, action: action, args: args || {} })
+    });
+    let r;
+    try { r = await res.json(); } catch (e) { throw new Error('後台回應異常（HTTP ' + res.status + '），請稍後再試'); }
+    if (!r.ok) {
+      if (r.auth && !retried && /權杖|過期|驗證/.test(r.error || '')) { sessionStorage.removeItem(TK); return call(action, args, true); }
+      if (r.auth && /尚未開通/.test(r.error || '')) showLogin(r.error);
+      throw new Error(r.error || '後台錯誤');
+    }
+    return r.data;
+  }
+  /* 與 Apps Script 相同名稱的伺服器函式 */
+  const FN = {
+    api: (a, args) => call(a, args),
+    getInitData: () => call('djInit'),
+    saveResult: (id, score, defects, force, content) => call('djSaveResult', { id, score, defects, force: !!force, content: content || null }),
+    getRecord: id => call('djRecord', { id }),
+    convertToText: (base64, mimeType, fileName) => call('djConvert', { base64, mimeType, fileName }),
+    saveOdtToDrive: (base64, fileName) => call('djSaveOdt', { base64, fileName }),
+    aiRecognize: (pages, committees) => call('djAi', { pages, committees }),
+    aiStructureText: (text, committees) => call('djAiText', { text, committees }),
+    whoAmI: async () => (current() || {}).email || ''
+  };
+  function attachRun() {
+    window.google = window.google || {};
+    if (google.script) return;
+    google.script = { get run() {
+    let ok = () => { }, ng = () => { }, P;
+    const o = { withSuccessHandler(f) { ok = f; return P; }, withFailureHandler(f) { ng = f; return P; } };
+    P = new Proxy(o, { get: (t, k) => k in t ? t[k] : (...a) => {
+      if (!FN[k]) { ng(new Error('未知的功能：' + k)); return; }
+      FN[k](...a).then(ok, ng);
+    } });
+    return P;
+  } };
+  }
+  attachRun();
+
+  /* 登出：清除身分證明與本機暫存 */
+  window.DK = {
+    logout() {
+      try { sessionStorage.removeItem(TK); } catch (e) { }
+      clearLocal();
+      try { localStorage.removeItem('dk_user'); } catch (e) { }
+      if (gisReady) google.accounts.id.disableAutoSelect();
+      location.reload();
+    },
+    email: () => (current() || {}).email || ''
+  };
+
+  /* Google 登入元件載入後初始化 */
+  window.dkGisLoaded = function () {
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', window.dkGisLoaded); return; }
+    attachRun();   // 若 Google 登入元件重設了 window.google，補回介面
+    google.accounts.id.initialize({ client_id: CFG.clientId, callback: onCredential, auto_select: true, cancel_on_tap_outside: false, use_fedcm_for_prompt: true });
+    gisReady = true;
+    if (!current()) showLogin();
+    else hideLogin();
+  };
+  document.addEventListener('DOMContentLoaded', () => {
+    if (current()) hideLogin();
+    // 頁首加上「登出」
+    const me = document.getElementById('me');
+    if (me) {
+      const b = document.createElement('button');
+      b.className = 'b'; b.textContent = '登出'; b.style.marginLeft = '6px';
+      b.onclick = () => window.DK.logout();
+      me.parentNode.insertBefore(b, me.nextSibling);
+    }
+  });
+})();
+
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="dkGisLoaded()"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1f2933;--mute:#6b7785;--line:#e1e5ea;--pri:#1f5fa8;--pri2:#e8f0fa;--ok:#2e7d4f;--warn:#b26a00;--bad:#c0392b;
+ --t1:#1f5fa8;--t2:#7b4bb7;--t3:#2e7d4f;--t4:#b0571b;--t5:#5f6b78}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.bar{display:flex;align-items:center;gap:12px;padding:10px 20px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:17px;letter-spacing:.5px}
+.brand small{font-weight:400;color:var(--mute);margin-left:6px;font-size:12px}
+nav{display:flex;gap:2px;padding:0 14px}
+nav button{border:0;background:none;padding:10px 14px;font:inherit;color:var(--mute);border-bottom:2px solid transparent;cursor:pointer}
+nav button.on{color:var(--pri);border-bottom-color:var(--pri);font-weight:600}
+.navlink{padding:10px 14px;color:var(--mute);text-decoration:none;border-bottom:2px solid transparent}
+.navlink:hover{color:var(--pri)}
+.sp{flex:1}
+.me{color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--pri2);color:var(--pri)}
+main{padding:16px 20px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,input,textarea{font:inherit;padding:6px 8px;border:1px solid #c9d0d8;border-radius:6px;background:#fff;color:var(--ink)}
+.ix textarea{width:100%;min-height:60px;resize:vertical}
+button.b{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #c9d0d8;background:#fff;cursor:pointer}
+button.b:hover{background:#f0f3f6}
+button.p{background:var(--pri);border-color:var(--pri);color:#fff}
+button.p:hover{background:#174b86}
+button.d{color:var(--bad);border-color:#e5b6b0}
+button:disabled{opacity:.5;cursor:default}
+.hide{display:none!important}
+/* 月曆 */
+.calhead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.calhead h2{margin:0 8px;font-size:18px;min-width:120px;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-left:1px solid var(--line);border-top:1px solid var(--line);background:#fff}
+.grid .dow{padding:6px;text-align:center;font-size:12px;color:var(--mute);background:#fafbfc;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.cell{min-width:0;min-height:78px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:2px 4px;position:relative}
+.cell.out{background:#fafbfc}.cell.out .dn{color:#b8c0c8}
+.cell.hol{background:#fff6f5}
+.cell.today .dn{background:var(--pri);color:#fff;border-radius:10px;padding:0 6px}
+.cell.can-add:hover{background:#f7fafd;cursor:copy}
+.dn{font-size:11px;color:var(--mute);display:inline-block;margin-bottom:1px}
+.more{display:block;font-size:11px;color:var(--pri);cursor:pointer;padding:0 2px}.cell:not(.open) .chip.x{display:none}
+.calhead h2{font-size:16px}
+.grid .chip{display:block;font-size:11.5px;line-height:1.3;padding:1px 4px;margin:1px 0;border-radius:4px;color:#fff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid .chip.c{background:#d5dbe1!important;color:#6b7785;text-decoration:line-through}
+.mk{display:inline-block;font-size:10.5px;padding:0 4px;margin:1px 2px 0 0;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk.r{background:#e6f4ea;color:#2e7d4f}.mk.i{background:#fdecea;color:#b03a2e}
+.legend{display:flex;gap:10px;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* 表格 */
+.ix table{border-collapse:collapse;width:100%;background:#fff}
+.ix th,.ix td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top;font-size:13px}
+.ix th{background:#fafbfc;color:var(--mute);font-weight:600;position:sticky;top:0;white-space:nowrap}
+.ix th[data-k]{cursor:pointer;user-select:none}.ix th[data-k]:hover{color:var(--pri)}.ix th.sorted{color:var(--pri)}.ix th .ar{font-size:10px;margin-left:3px}
+.ix tbody tr:hover{background:#f7fafd;cursor:pointer}
+.ix tr.cx td{color:#9aa4ae;text-decoration:line-through}
+.st{font-size:12px;padding:1px 7px;border-radius:10px;white-space:nowrap}
+.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
+.tbl{max-height:calc(100vh - 230px);overflow:auto;border:1px solid var(--line);border-radius:8px}
+.cnt{color:var(--mute);font-size:13px}
+/* 期限 */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.dl h3{margin:0 0 8px;font-size:15px}
+.dl .it{padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;cursor:pointer;background:#fff}
+.dl .it:hover{border-color:var(--pri)}
+.dl .it .d{font-weight:600}
+.late{color:var(--bad)}.soon{color:var(--warn)}
+/* 對話框 */
+.mask{position:fixed;inset:0;background:rgba(20,30,40,.45);display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto;z-index:50}
+.dlg{background:#fff;border-radius:10px;width:760px;max-width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.dlg header{position:static;display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);border-radius:10px 10px 0 0}
+.dlg header h3{margin:0;font-size:16px}
+.dlg .bd{padding:16px 18px}
+.dlg footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.fg{display:grid;grid-template-columns:110px 1fr 110px 1fr;gap:10px 12px;align-items:center}
+.fg label{color:var(--mute);font-size:13px;text-align:right}
+.fg .full{grid-column:2/5}
+.fg input,.fg select{width:100%}
+.fg input[type=checkbox]{width:auto;margin:0 4px 0 0;vertical-align:-2px}
+.req::after{content:" *";color:var(--bad)}
+.info{background:#f6f8fa;border-radius:6px;padding:8px 10px;font-size:13px;color:#46525e}
+.warnbox{background:#fff7e6;border:1px solid #f3d19b;color:#7a4a00;border-radius:6px;padding:10px 12px;margin-top:12px}
+.errbox{background:#fdecea;border:1px solid #f1b8b0;color:#8c2a1f;border-radius:6px;padding:10px 12px;margin-top:12px}
+.calc{color:var(--pri);font-weight:600}
+.ix details{margin-top:12px}.ix summary{cursor:pointer;color:var(--mute)}
+.log{font-size:12px;color:#46525e;max-height:200px;overflow:auto}
+.log div{padding:4px 0;border-bottom:1px dashed var(--line)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#263238;color:#fff;padding:10px 18px;border-radius:6px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:.95}
+#loading{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;z-index:90;font-size:15px;color:var(--mute)}
+.spin{width:22px;height:22px;border:3px solid #cfd8e3;border-top-color:var(--pri);border-radius:50%;animation:s 1s linear infinite;margin-right:10px}
+@keyframes s{to{transform:rotate(360deg)}}
+/* 統計 */
+.stf{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.yrs label{margin-right:8px;font-size:13px}
+.stgrid{display:grid;gap:16px}
+.stgrid h3{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px}
+.stgrid h3 .sp{flex:1}
+.tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.tile{flex:1;min-width:110px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:#fafbfc}
+.tile .v{font-size:22px;font-weight:700;color:var(--ink);line-height:1.2}.tile .l{font-size:12px;color:var(--mute)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:150px;padding:6px 4px 0;border-bottom:1px solid #c9d0d8}
+.bars .b{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative}
+.bars .b i{display:block;width:70%;max-width:34px;background:var(--pri);border-radius:4px 4px 0 0;min-height:1px}
+.bars .b:hover i{background:#174b86}
+.bars .b span{font-size:11px;color:var(--mute);margin-bottom:2px}
+.barx{display:flex;gap:6px;padding:2px 4px 0}.barx div{flex:1;text-align:center;font-size:11px;color:var(--mute)}
+.ix table.st td.n,.ix table.st th.n{text-align:right;font-variant-numeric:tabular-nums}
+.ix table.st tbody tr{cursor:default}
+.ix table.st th{position:static}.ix .tbl table.st th{position:sticky}
+.ix table.st tr.click{cursor:pointer}
+.hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
+.note2{font-size:12px;color:var(--mute);margin-top:6px}
+@media(max-width:820px){.two{grid-template-columns:1fr}}
+@media(max-width:820px){.cols{grid-template-columns:1fr}.fg{grid-template-columns:90px 1fr}.fg .full{grid-column:2/3}.cell{min-height:80px}}
+</style>
+</head>
+<body>
+<div id="dkLogin"><div class="box"><h1>督導查核系統</h1>
+<p id="dkLoginMsg">請以 Google 帳號登入（僅取得您的 Email 以確認權限）</p><div id="dkLoginBtn"></div>
+<p style="margin-top:16px">帳號需由系統管理者開通後才能使用</p></div></div>
+
+<header>
+  <div class="bar">
+    <span class="brand">督導查核系統</span>
+    <select id="selYear" title="年度"></select>
+    <span class="sp"></span>
+    <span class="me" id="me"></span>
+    <button class="b p" id="btnNew">＋ 新增行程</button>
+  </div>
+  <nav id="nav">
+    <button data-v="list" class="on">清單</button>
+    <button data-v="cal">月曆</button>
+    <button data-v="due">期限提醒</button>
+    <button data-v="rec">督導紀錄</button>
+    <button data-v="stat">統計</button>
+    <button data-v="admin" class="hide" id="navAdmin">管理</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 月曆 -->
+  <section id="v-cal" class="ix hide">
+    <div class="calhead">
+      <button class="b" id="mPrev">‹</button><h2 id="mTitle"></h2><button class="b" id="mNext">›</button>
+      <button class="b" id="mToday">本月</button>
+      <span class="sp"></span>
+      <label class="cnt"><input type="checkbox" id="chkCancel"> 顯示已取消</label>
+      <label class="cnt"><input type="checkbox" id="chkDue" checked> 顯示期限</label>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="legend" id="legend" style="margin-top:8px"></div>
+  </section>
+
+  <!-- 清單 -->
+  <section id="v-list" class="ix">
+    <div class="row" style="margin-bottom:10px">
+      <select id="fMonth"><option value="">全部月份</option></select>
+      <select id="fType"><option value="">全部項目</option></select>
+      <select id="fUnit"><option value="">全部單位</option></select>
+      <select id="fStatus"><option value="">全部狀態</option><option>已排定</option><option>待登錄結果</option><option>已登錄結果</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
+      <input id="fKey" placeholder="搜尋工程名稱、委員、編號…" style="min-width:220px">
+      <span class="sp"></span><span class="cnt" id="listCnt"></span>
+      <button class="b" id="btnCsv">下載 CSV</button>
+    </div>
+    <div class="tbl"><table><thead><tr>
+      <th data-k="案件編號">案件編號</th><th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="工作人員">工作人員</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
+    </tr></thead><tbody id="listBody"></tbody></table></div>
+  </section>
+
+  <!-- 期限 -->
+  <section id="v-due" class="ix hide">
+    <div class="cols">
+      <div class="card dl"><h3>📝 紀錄表繳交期限（未來 14 天）</h3><div id="dueRec"></div></div>
+      <div class="card dl"><h3>⚠️ 報部改善期限（未完成）</h3><div id="dueImp"></div></div>
+      <div class="card dl"><h3>⏳ 待登錄結果（已辦理、尚無成績與缺失）</h3><div id="duePend"></div></div>
+    </div>
+  </section>
+
+  <!-- 管理 -->
+  <section id="v-admin" class="ix hide">
+    <div class="cols">
+      <div class="card">
+        <h3 style="margin-top:0">使用者與角色</h3>
+        <table><thead><tr><th>Email</th><th>姓名</th><th>角色</th><th>啟用</th></tr></thead><tbody id="userBody"></tbody></table>
+        <div class="row" style="margin-top:10px">
+          <input id="uEmail" placeholder="Email" style="flex:2">
+          <input id="uName" placeholder="姓名" style="flex:1">
+          <select id="uRole"><option>承辦</option><option>查詢者</option><option>管理者</option></select>
+          <label><input type="checkbox" id="uOn" checked> 啟用</label>
+          <button class="b p" id="btnUser">儲存</button>
+        </div>
+        <p class="cnt">角色：管理者（全部功能）、承辦（登錄／修改／取消行程）、查詢者（只能查看）。點表格中的帳號可帶入修改。</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">系統作業</h3>
+        <div class="row"><button class="b" id="btnSync">立即同步 Google 日曆</button><span class="cnt" id="syncInfo"></span></div>
+        <div class="row" style="margin-top:10px"><button class="b" id="btnHol">更新國定假日</button><span class="cnt">從新北市資料開放平臺下載行政機關辦公日曆</span></div>
+        <div class="row" style="margin-top:10px"><button class="b" id="btnReview">檢視搬遷待確認清單</button></div>
+        <div id="reviewBox" class="tbl hide" style="margin-top:10px;max-height:420px"></div>
+      </div>
+    </div>
+  </section>
+  <!-- 統計 -->
+  <section id="v-stat" class="ix hide">
+    <div class="card stf">
+      <b>年度</b><span class="yrs" id="stYears"></span>
+      <select id="stType"><option value="">全部項目</option></select>
+      <select id="stKind"><option value="">全部單位別</option><option>管理處</option><option>縣市政府</option></select>
+      <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
+    </div>
+    <div class="stgrid">
+      <div class="card"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button></h3>
+        <div class="tiles" id="stTiles1"></div>
+        <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
+          <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div></div></div>
+      </div>
+      <div class="card"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button></h3>
+        <div class="tiles" id="stTiles2"></div>
+        <div class="two"><div><table class="st" id="tbGrade"></table><div class="note2">等第沿用原統計表：80 分以上甲、70–79 乙、未滿 70 丙。</div></div>
+          <div><div class="cnt" style="margin-bottom:4px">成績分布（每 5 分一級）</div><div class="bars" id="stHist"></div><div class="barx" id="stHistX"></div></div></div>
+      </div>
+      <div class="card"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button></h3>
+        <div class="tbl" style="max-height:480px"><table class="st" id="tbUnit"></table></div>
+        <div class="note2">點欄名可排序。平均缺失數只計已建立缺失的案件（排除「缺失未建立」），避免低估。</div>
+      </div>
+      <div class="card"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button></h3>
+        <div class="tiles" id="stTiles4"></div>
+        <div class="two"><div><table class="st" id="tbSec"></table></div><div><table class="st" id="tbLevel"></table></div></div>
+        <div class="cnt" style="margin:12px 0 4px">最常見缺失代碼前 20 名（點選列可看實際案例）</div>
+        <table class="st" id="tbCode"></table>
+      </div>
+      <div class="card" id="stComBox"><h3>5. 委員統計（僅管理者可見）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button></h3>
+        <div class="tbl" style="max-height:480px"><table class="st" id="tbCom"></table></div>
+        <div class="note2">以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
+      </div>
+    </div>
+  </section>
+  <div class="mask hide ix" id="stMask"><div class="dlg" style="width:960px"><header><h3 id="stMTitle"></h3><span class="sp"></span><button class="b" id="stMClose">關閉</button></header><div class="bd"><div class="tbl" style="max-height:65vh"><table class="st" id="stMTable"></table></div></div></div></div>
+
+  <!-- 督導紀錄（原獨立頁，併入同一頁） -->
+  <section id="v-rec" class="hide"><!-- 由 Record.html 自動產生（build_rec.py），請勿直接修改 -->
+<style>
+#v-rec{--bg:#f5f6f8; --panel:#ffffff; --ink:#1f2933; --muted:#6b7785; --line:#e1e5ea;
+    --accent:#1f5fa8; --accent-2:#e8f0fa; --warn:#9a5b00; --warn-bg:#fff4e0;
+    --err:#b03a2e; --err-bg:#fdecea; --ok:#2e7d4f; --ok-bg:#e6f4ea; --hl:#fff27a;
+    --radius:8px;}
+#v-rec *{box-sizing:border-box}
+#v-rec{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif}
+#v-rec .rmain{display:grid;gap:16px;padding:0 0 110px}
+#v-rec section.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+#v-rec .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+#v-rec .step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px}
+#v-rec .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#v-rec input[type=text],#v-rec input[type=search],#v-rec input[type=number],#v-rec select,#v-rec textarea{font:inherit;color:inherit;border:1px solid #c9d0d8;border-radius:6px;padding:6px 8px;background:#fff;min-width:0}
+#v-rec textarea{width:100%;resize:vertical}
+#v-rec button{font:inherit;border:1px solid #c9d0d8;background:#fff;color:var(--ink);border-radius:6px;padding:6px 14px;cursor:pointer}
+#v-rec button:hover{background:#f0f3f6}
+#v-rec button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#v-rec button.primary:hover{background:#174b86}
+#v-rec button.ghost{color:var(--muted)}
+#v-rec button:disabled{opacity:.45;cursor:not-allowed}
+#v-rec .chip{border:1px solid var(--line);border-radius:999px;padding:3px 12px;background:#fff;color:var(--muted);cursor:pointer;font-size:13px}
+#v-rec .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#v-rec .chip.warnchip{border-color:var(--err);color:var(--err);background:var(--err-bg)}
+#v-rec .chip.warnchip.on{background:var(--err);color:#fff}
+#v-rec .muted{color:var(--muted);font-size:13px}
+#v-rec .badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--accent-2);color:var(--accent);white-space:nowrap}
+#v-rec .badge.warn{background:var(--warn-bg);color:var(--warn)}
+#v-rec .badge.err{background:var(--err-bg);color:var(--err)}
+#v-rec .badge.ok{background:var(--ok-bg);color:var(--ok)}
+#v-rec .caselist{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px;background:#fff}
+#v-rec .caselist table{width:100%;border-collapse:collapse;font-size:13px}
+#v-rec .caselist th{position:sticky;top:0;background:#fafbfc;color:var(--muted);text-align:left;font-weight:600;padding:7px 8px;white-space:nowrap;cursor:pointer;user-select:none}
+#v-rec .caselist th:hover,#v-rec .caselist th.sorted{color:var(--accent)}
+#v-rec .caselist th .ar{font-size:10px;margin-left:3px}
+#v-rec .caselist td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+#v-rec .caselist tr.pick{cursor:pointer}
+#v-rec .caselist tr.pick:hover{background:#f7fafd}
+#v-rec .caselist tr.sel{background:var(--accent-2)}
+#v-rec .selected-case{margin-top:10px;padding:10px 12px;border-left:4px solid var(--accent);background:var(--accent-2);border-radius:6px}
+#v-rec .drop{border:2px dashed #c9d0d8;border-radius:8px;padding:22px;text-align:center;color:var(--muted);background:#fafbfc;cursor:pointer}
+#v-rec .drop.over{border-color:var(--accent);background:var(--accent-2);color:var(--accent)}
+#v-rec .files{display:grid;gap:8px;margin-top:12px}
+#v-rec .file{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#v-rec .thumb{width:56px;height:56px;border-radius:6px;background:#f0f3f6;display:grid;place-items:center;font-size:12px;color:var(--muted);overflow:hidden;cursor:pointer}
+#v-rec .thumb img{width:100%;height:100%;object-fit:cover}
+#v-rec .file .name{font-weight:600;word-break:break-all}
+#v-rec .file .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+#v-rec .grid-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px 14px}
+#v-rec .grid-form label{display:grid;gap:2px;font-size:13px;color:var(--muted)}
+#v-rec .grid-form label.wide{grid-column:1/-1}
+#v-rec .grid-form input,#v-rec .grid-form textarea{font-size:14px;color:var(--ink)}
+#v-rec .grid-form .empty{background:#fffbe6;border-color:#e6cf73}
+#v-rec .items{width:100%;border-collapse:collapse;font-size:14px}
+#v-rec .items th{background:#fafbfc;color:var(--muted);text-align:left;padding:6px;font-size:13px;font-weight:600;white-space:nowrap}
+#v-rec .items td{border-top:1px solid var(--line);padding:5px 6px;vertical-align:top}
+#v-rec .items td textarea{min-height:38px;font-size:14px}
+#v-rec .items td input{width:120px}
+#v-rec .items td select{max-width:130px}
+#v-rec .items tr.flag td{background:#fffaf0}
+#v-rec .items .codehint{font-size:12px;color:var(--muted);margin-top:2px;max-width:260px}
+#v-rec .tools{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+#v-rec .split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+#v-rec .split.on{grid-template-columns:minmax(300px,42%) minmax(0,1fr)}
+#v-rec .viewer{display:none;position:sticky;top:8px;align-self:start;max-height:calc(100vh - 90px);overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fafbf9;padding:8px}
+#v-rec .split.on .viewer{display:block}
+#v-rec .viewer img{width:100%;display:block;cursor:zoom-in}
+#v-rec .viewer img.zoom{width:220%;cursor:zoom-out}
+#v-rec .viewer .vbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;position:sticky;top:-8px;background:#fafbf9;padding:4px 0}
+#v-rec .fillbtn{padding:0 6px;font-size:12px;margin-top:2px}
+#v-rec .split.on .items thead{display:none}
+#v-rec .split.on .items tbody tr{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px 6px;border-top:1px solid var(--line);padding:8px 0}
+#v-rec .split.on .items td{border:0;padding:0}
+#v-rec .split.on .items td select{max-width:none;width:100%}
+#v-rec .split.on .items td:nth-child(7){order:4}
+#v-rec .split.on .items td:nth-child(4){order:5;grid-column:1/-1}
+#v-rec .split.on .items td:nth-child(5){order:6;grid-column:1/3}
+#v-rec .split.on .items td:nth-child(6){order:7;grid-column:3/-1}
+#v-rec .split.on .items td:nth-child(5) input{width:100%}
+#v-rec .split.on .items td[colspan]{grid-column:1/-1}
+@media (max-width:900px){#v-rec .split.on{grid-template-columns:1fr}
+#v-rec .viewer{position:static;max-height:60vh}}
+#v-rec .preview-wrap{overflow:auto;background:#eceff3;border-radius:8px;padding:18px}
+#v-rec .paper{background:#fff;width:min(820px,100%);margin:0 auto;padding:28px 34px;box-shadow:0 1px 4px rgba(0,0,0,.12);font-family:"DFKai-SB","BiauKai","標楷體","Kaiti TC",serif;color:#000}
+#v-rec .paper h3{text-align:center;font-size:20px;margin:0 0 10px;font-weight:700}
+#v-rec .rec{width:100%;border-collapse:collapse;font-size:15px;table-layout:fixed}
+#v-rec .rec td{border:1px solid #000;padding:4px 6px;vertical-align:middle;word-break:break-all}
+#v-rec .rec td.lbl{text-align:center}
+#v-rec .rec td.vlbl{text-align:center;width:44px}
+#v-rec .rec ol{margin:0;padding-left:1.7em}
+#v-rec .rec ol li{margin:1px 0}
+#v-rec .rec p{margin:0}
+#v-rec mark{background:var(--hl);padding:0 2px}
+#v-rec .checks{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:4px;font-size:14px}
+#v-rec .checks li{padding:5px 10px;border-radius:6px}
+#v-rec .checks li.warn{background:var(--warn-bg);color:var(--warn)}
+#v-rec .checks li.err{background:var(--err-bg);color:var(--err)}
+#v-rec .checks li.ok{background:var(--ok-bg);color:var(--ok)}
+#v-rec .actionbar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:5}
+#v-rec .toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:#263238;color:#fff;padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#v-rec .toast.show{opacity:1}
+#v-rec .topnav{display:flex;gap:4px;margin:0 8px}
+#v-rec .topnav a{padding:5px 12px;border-radius:6px;color:inherit;text-decoration:none;font-size:14px;border:1px solid transparent}
+#v-rec .topnav a:hover{border-color:var(--line)}
+#v-rec .topnav a.on{background:#e8f0fa;color:#1f5fa8;font-weight:600}
+#v-rec .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:10;padding:20px;overflow:auto}
+#v-rec .modal.show{display:block}
+#v-rec .modal .inner{background:#fff;max-width:1000px;margin:0 auto;border-radius:10px;padding:12px}
+#v-rec .modal img,#v-rec .modal canvas{max-width:100%;display:block;margin:0 auto 10px}
+#v-rec .modal pre{white-space:pre-wrap;font-size:13px;background:#f6f7f5;padding:10px;border-radius:6px}
+#v-rec .loading{padding:20px;text-align:center;color:var(--muted)}
+#v-rec .note{font-size:12.5px;color:var(--muted);margin-top:8px}
+#v-rec .manual{margin-top:14px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fafbfc}
+#v-rec .manual summary{cursor:pointer;font-weight:600}
+#v-rec .manual .row{margin-top:8px}
+#v-rec .manual textarea{width:100%;box-sizing:border-box;margin-top:8px;font:inherit}
+#v-rec .manual input.score{width:72px}
+@media (max-width:700px){#v-rec .file{grid-template-columns:44px 1fr}
+#v-rec .file .acts{grid-column:1/-1;justify-content:flex-start}
+#v-rec .thumb{width:44px;height:44px}
+#v-rec .paper{padding:14px}}
+</style>
+<div class="rmain">
+  <!-- 1. 選擇案件 -->
+  <section class="card">
+    <h2><span class="step">1</span>選擇案件（今年及去年度，另含往年缺失未建立；可搜尋編號、名稱、委員）<span class="muted" id="loadedAt" style="margin-left:auto;font-weight:400;font-size:12px"></span></h2>
+    <div class="row">
+      <input type="search" id="q" placeholder="搜尋工程名稱、單位、委員…" style="flex:1;min-width:220px">
+      <div class="row" id="typeChips"></div>
+    </div>
+    <div class="caselist" id="caseList"><div class="loading">讀取排程中…</div></div>
+    <div id="selectedCase"></div>
+  </section>
+
+  <!-- 2. 上傳委員意見 -->
+  <section class="card">
+    <h2><span class="step">2</span>委員意見（上傳檔案或手動輸入）</h2>
+    <div class="drop" id="drop">
+      將委員評分表拖曳到這裡，或<b>點此選擇檔案</b><br>
+      <span class="muted">支援 .docx、.odt、.pdf、.txt 直接解析；手寫照片／掃描檔用「AI 辨識」；舊版 .doc 用「Google 轉檔＋AI 判讀」</span>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".docx,.odt,.pdf,.txt,.doc,image/*" hidden>
+    <div class="files" id="fileList"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="btnAiAll">全部 AI 辨識</button>
+      <span class="muted">同一位委員的多張照片請先指定同一委員，會合併成一次辨識（跨頁段落較準確）；未指定委員的檔案逐張辨識，並依簽名判斷委員。</span>
+    </div>
+    <details class="manual" id="manualBox" open>
+      <summary>✍ 手動輸入（沒有電子檔、手寫稿看圖輸入，或補登遺漏時使用）</summary>
+      <div class="row">
+        <label>委員 <select id="mWho"></select></label>
+        <label>類別 <select id="mCat"></select></label>
+        <label>該委員總分 <input type="number" id="mTotal" class="score" min="0" max="100" step="0.5" placeholder="例 83"></label>
+      </div>
+      <textarea id="mText" rows="6" placeholder="一行一條；有 1. 2. 3. 編號時依編號分條（跨行自動合併）。段落依缺失代碼自動判斷，不用選。&#10;可用「優點：」「缺點：」切換類別。缺點後面直接打代碼與等級；優點也可打代碼（只用來判斷段落，不會顯示），例如：&#10;1.品質計畫未依規定適時檢討修正 4.01.03.01(L)&#10;2.混凝土澆置前未確實清除模板內雜物 5.03.02.04(M)"></textarea>
+      <div class="row">
+        <button class="primary" id="mAdd">加入意見表</button>
+        <span class="muted" id="mMsg"></span>
+      </div>
+      <div class="row">
+        <label>依代碼新增缺點 <input id="mCode" list="codeList" placeholder="4.01.06.02" style="width:130px"></label>
+        <select id="mLevel"><option>L</option><option>M</option><option>S</option></select>
+        <button id="mAddCode">帶入制式文字</button>
+        <span class="muted">（帶入缺失扣點表的制式文字，加入後可在下方修改）</span>
+      </div>
+    </details>
+    <div class="row" style="margin-top:10px">
+      <label class="muted">（選用）標案自選欄位表 .xlsx，補帶工程概要、開工／完工日期：</label>
+      <input type="file" id="xlsxInput" accept=".xlsx">
+      <span id="xlsxMsg" class="muted"></span>
+    </div>
+    <p class="note">Word／ODT／文字型 PDF 在瀏覽器內解析，不會上傳。按「AI 辨識」時，影像會送至 Google Gemini API（付費版，資料不用於訓練）辨識；按「Google OCR」時，檔案會暫存到你自己的雲端硬碟轉檔，取出文字後立即刪除。辨識結果請務必核對原稿。</p>
+  </section>
+
+  <!-- 3. 基本資料 -->
+  <section class="card">
+    <h2><span class="step">3</span>基本資料（已自動帶入，可修改；黃底為待補）</h2>
+    <div class="grid-form" id="baseForm"></div>
+  </section>
+
+  <!-- 4. 優缺點 -->
+  <section class="card">
+    <h2><span class="step">4</span>委員意見內容（可修改）</h2>
+    <div class="tools">
+      <select id="itemFilter">
+        <option value="">全部類別</option><option>優點</option><option>缺點</option><option>規劃設計建議</option><option>其他建議</option>
+      </select>
+      <button class="ghost" id="addItem">＋ 新增一列</button>
+      <button id="toggleViewer">顯示原稿對照</button>
+      <span class="muted">在內容欄按 Ctrl+Enter 可於同段落新增下一條</span>
+      <label class="muted"><input type="checkbox" id="mergeSame" checked> 同一缺失代碼合併為一條</label>
+      <span class="muted" id="itemStat"></span>
+    </div>
+    <div class="split" id="split">
+      <div class="viewer" id="viewer"></div>
+      <div style="overflow:auto"><table class="items" id="itemTable"></table></div>
+    </div>
+    <datalist id="codeList"></datalist>
+  </section>
+
+  <!-- 5. 預覽 -->
+  <section class="card">
+    <h2><span class="step">5</span>督導紀錄表預覽</h2>
+    <ul class="checks" id="checks"></ul>
+    <div class="preview-wrap" style="margin-top:12px"><div class="paper" id="paper"></div></div>
+  </section>
+</div>
+
+<div class="actionbar">
+  <button class="primary" id="btnSaveDb">儲存結果到資料庫</button>
+  <button class="primary" id="btnOdt">下載督導紀錄表（.odt）</button>
+  <button id="btnDrive">存到雲端硬碟</button>
+  <button id="btnCopyGood">複製優點</button>
+  <button id="btnCopyBad">複製缺點</button>
+  <button class="ghost" id="btnCopySugg">複製建議</button>
+  <label class="muted" style="align-self:center"><input type="checkbox" id="copyNoCode"> 複製時不含代碼</label>
+</div>
+<div class="toast" id="rtoast"></div>
+<div class="modal" id="modal"><div class="inner" id="modalInner"></div></div>
+<script>
+window.REC_EMBED = true;
+(function(){
+
+/* =====================================================================
+ * 常數與狀態
+ * ===================================================================== */
+const ODT_TEMPLATE_B64 = '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';   // 由範本 .odt 轉成，含 {{佔位符}}
+const PDFJS_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+
+// 評分表段落（決定優點排序）
+const SECTIONS = [
+  ['A1','(一)主辦機關/PCM'],['A2','(二)監造單位'],['B','B承攬廠商'],
+  ['W1','二(一)施工品質'],['W2','二(二)材料設備'],['W3','二(三)施工安全衛生'],
+  ['S5','五、規劃設計'],['S6','六、其他建議'],['O','其他']
+];
+const SEC_ORDER = Object.fromEntries(SECTIONS.map((s,i)=>[s[0],i]));
+const CATS = ['優點','缺點','規劃設計建議','其他建議'];
+const PH = '【待補】';
+
+// 基本資料欄位（key, 標籤, 寬欄）
+const BASE_FIELDS = [
+  ['列管計畫名稱','列管計畫名稱',true],['計畫主辦機關','計畫主辦機關'],['主管機關','標案所屬工程主管機關'],
+  ['督導日期','督導日期（民國，如 115.01.12）'],['標案名稱','標案名稱',true],['地點','地點'],
+  ['主辦單位','標案主辦單位'],['發包預算','發包預算（千元）'],['契約金額','契約金額（千元）'],
+  ['設計單位','設計單位'],['監造單位','監造單位'],['承包商','承包商'],
+  ['工程概要','工程概要',true],
+  ['進度截止日','進度截止日（民國）'],['預定進度','預定進度（%）'],['實際進度','實際進度（%）'],
+  ['預定經費','經費累計支用－預定（千元）'],['實際經費','經費累計支用－實際（千元）'],
+  ['已完成','已完成工程內容',true],['未完成','未完成工程內容',true],
+  ['督導委員','督導委員（以「、」分隔）'],['開工日期','開工日期（民國）'],['完工日期','預定完工日期（民國）'],
+  ['領隊','領隊'],['工作人員','工作人員'],['督導分數','督導分數'],['等級','等級（空白依分數判定）'],
+  ['檢驗拆驗','檢驗拆驗',true]
+];
+
+const S = {
+  cases: [], detailsByKey: {}, detailsByName: {}, codes: {},
+  typeFilter: '全部', sel: null,
+  base: {}, files: [], items: [], seq: 1,
+  xlsxRows: null, manualTotals: {}
+};
+
+/* =====================================================================
+ * 小工具
+ * ===================================================================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const xmlEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+function toast(msg){ const t=$('rtoast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200); }
+
+/** google.script.run 包成 Promise；本機測試時改用 window.__MOCK__ */
+function gs(fn, ...args){
+  if (window.google && google.script && google.script.run){
+    return new Promise((res,rej)=> google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
+  }
+  if (window.__MOCK__ && window.__MOCK__[fn]) return Promise.resolve(window.__MOCK__[fn](...args));
+  return Promise.reject(new Error('請由 Apps Script 網頁應用程式開啟本頁'));
+}
+
+/** '2026/1/2' → '2026/01/02' */
+function normDate(s){ const m=String(s||'').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/); return m? `${m[1]}/${m[2].padStart(2,'0')}/${m[3].padStart(2,'0')}` : String(s||''); }
+/** 西元 'yyyy/mm/dd' → 民國 '115.01.12' */
+function rocDot(s){ const m=normDate(s).match(/(\d{4})\/(\d{2})\/(\d{2})/); return m? `${+m[1]-1911}.${m[2]}.${m[3]}` : ''; }
+/** 民國 '115.01.12'／'115/1/12'／'1150112' → Date */
+function parseRoc(s){
+  s=String(s||'').trim(); let m=s.match(/^(\d{2,3})\D+(\d{1,2})\D+(\d{1,2})/)||s.match(/^(\d{3})(\d{2})(\d{2})$/);
+  if(!m) return null; return new Date(+m[1]+1911, +m[2]-1, +m[3]);
+}
+const rocText = d => d? `${d.getFullYear()-1911}年${d.getMonth()+1}月${d.getDate()}日` : '';
+const rocDotFromDate = d => d? `${d.getFullYear()-1911}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '';
+function thousand(v){ const n=parseFloat(String(v).replace(/,/g,'')); if(isNaN(n)) return String(v||''); return Number.isInteger(n)? n.toLocaleString('en-US') : n.toLocaleString('en-US',{maximumFractionDigits:1}); }
+function gradeOf(score){ const s=parseFloat(score); if(isNaN(s)) return ''; return s>=90?'優等':s>=80?'甲等':s>=70?'乙等':s>=60?'丙等':'丁等'; }
+function codeKey(c){ return String(c).split('.').map(x=>String(+x||0).padStart(3,'0')).join('.'); }
+const severity = l => ({L:1,M:2,S:3}[l]||0);
+
+/* =====================================================================
+ * 1. 案件清單
+ * ===================================================================== */
+/* 先顯示上次的暫存資料（瀏覽器本機），同時向後台讀最新資料，讀到後再更新清單 */
+const DJ_LS='dk_dj_v1';
+let preDone=false;
+let PRE_ID='';
+async function loadInit(){
+  let cached=null;
+  try{ cached=JSON.parse(localStorage.getItem(DJ_LS)||'null'); }catch(e){}
+  if(cached){ try{ applyInit(cached,true); }catch(e){} }
+  try{
+    const d = await gs('getInitData');
+    try{ localStorage.setItem(DJ_LS, JSON.stringify(d)); }catch(e){}
+    applyInit(d,false);
+  }catch(e){
+    if(cached){ toast('無法讀取最新資料：'+(e.message||e)); return; }
+    $('caseList').innerHTML = `<div class="loading" style="color:var(--err)">案件讀取失敗：${esc(e.message||e)}<br>請確認你的帳號已在督導查核系統開通。</div>`;
+  }
+}
+function applyInit(d, stale){
+  {
+    const selId = S.sel && S.sel['案件編號'];
+    S.cases = d.schedule.map((r,i)=>({...r, _i:i, _date:normDate(r['日期'])})).sort((a,b)=> b._date.localeCompare(a._date));
+    S.detailsByKey={}; S.detailsByName={};
+    d.details.forEach(r=>{ const k=normDate(r['日期'])+'|'+r['工程名稱']; S.detailsByKey[k]=r; S.detailsByName[r['工程名稱']]=r; });
+    S.codes = d.codes || {};
+    $('codeList').innerHTML = Object.entries(S.codes).map(([c,t])=>`<option value="${esc(c)}">${esc(String(t).replace(/□/g,'').slice(0,40))}</option>`).join('');
+    $('loadedAt').textContent = stale ? '顯示暫存資料（'+(d.loadedAt||'')+'），更新中…' : '資料讀取：'+(d.loadedAt||'');
+    S.role = d.role || '';
+    // 更新資料後保留目前選取的案件（不重設已輸入的內容）
+    if (selId) { const c = S.cases.find(x => x['案件編號'] === selId); if (c) S.sel = c; }
+    renderChips(); renderCases();
+    if (PRE_ID && !preDone) { const c = S.cases.find(x => x['案件編號'] === PRE_ID); if (c) { preDone = true; selectCase(c._i); } }
+  }
+}
+/* ---- 案件清單排序（規則與行程登錄清單相同）----
+ * 點欄名排序、再點反向；編號、日期、成績、缺失第一次點為由大到小（新→舊），其他欄第一次點為遞增（中文依筆畫）；
+ * 空白排最後；同值依日期新→舊。排序選擇記在本機瀏覽器。 */
+S.sort = (()=>{ try{ return JSON.parse(localStorage.getItem('dk_sort_rec'))||null; }catch(e){ return null; } })() || {k:'_date', d:-1};
+const coll = new Intl.Collator('zh-Hant-TW',{numeric:true});
+function sortVal(c,k){
+  if(k==='委員') return [c['委員1'],c['委員2']].filter(Boolean).join('、');
+  if(k==='成績'||k==='缺失數'){ if(k==='缺失數'&&c['缺失未建立']) return -1; const n=parseFloat(c[k]); return isNaN(n)?'':n; }
+  return c[k]==null?'':String(c[k]);
+}
+function cmpCase(a,b){
+  const k=S.sort.k, d=S.sort.d, va=sortVal(a,k), vb=sortVal(b,k);
+  if((va==='')!==(vb==='')) return va===''?1:-1;
+  let r=0; if(va!=='') r = typeof va==='number' ? va-vb : coll.compare(va,vb);
+  return r*d || b._date.localeCompare(a._date) || coll.compare(b['案件編號'],a['案件編號']);
+}
+function renderChips(){
+  const types=['全部',...new Set(S.cases.map(c=>c['項目']).filter(Boolean))];
+  const nd=S.cases.filter(c=>c['缺失未建立']).length;
+  $('typeChips').innerHTML = (nd?`<span class="chip warnchip ${S.noDefOnly?'on':''}" data-nd="1" title="督導日期已過、資料庫內尚無任何缺失的案件（含往年）">⚠ 缺失未建立 ${nd}</span>`:'') +
+    types.map(t=>`<span class="chip ${t===S.typeFilter?'on':''}" data-t="${esc(t)}">${esc(t)}</span>`).join('');
+  $('typeChips').querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+    if(c.dataset.nd) S.noDefOnly=!S.noDefOnly; else S.typeFilter=c.dataset.t;
+    renderChips(); renderCases(); });
+}
+function renderCases(){
+  const q=$('q').value.trim().toLowerCase();
+  const list=S.cases.filter(c=> (S.typeFilter==='全部'||c['項目']===S.typeFilter) && (!S.noDefOnly||c['缺失未建立']) &&
+    (!q || [c['案件編號'],c['工程名稱'],c['單位'],c['委員1'],c['委員2'],c['領隊'],c._date].join(' ').toLowerCase().includes(q)));
+  if(!list.length){ $('caseList').innerHTML='<div class="loading">沒有符合的案件</div>'; return; }
+  list.sort(cmpCase);
+  const TH=[['案件編號','編號'],['_date','日期'],['項目','項目'],['單位','單位'],['工程名稱','工程名稱'],['委員','委員'],['成績','成績'],['缺失數','缺失']];
+  $('caseList').innerHTML = `<table><thead><tr>${TH.map(([k,l])=>`<th data-k="${k}" class="${S.sort.k===k?'sorted':''}" title="點選排序">${l}${S.sort.k===k?`<span class="ar">${S.sort.d<0?'▼':'▲'}</span>`:''}</th>`).join('')}</tr></thead><tbody>${
+    list.map(c=>`<tr class="pick ${S.sel&&S.sel._i===c._i?'sel':''}" data-i="${c._i}"><td>${esc(c['案件編號'])}</td><td>${esc(c._date)}</td><td><span class="badge">${esc(c['項目'])}</span></td><td>${esc(c['單位'])}</td><td>${esc(c['工程名稱'])}</td><td>${esc([c['委員1'],c['委員2']].filter(Boolean).join('、'))}</td><td>${esc(c['成績'])}</td><td>${c['缺失未建立']?'<span class="badge err">未建立</span>':esc(c['缺失數'])}</td></tr>`).join('')
+  }</tbody></table>`;
+  $('caseList').querySelectorAll('tr.pick').forEach(tr=>tr.onclick=()=>selectCase(+tr.dataset.i));
+  $('caseList').querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    S.sort = S.sort.k===k ? {k, d:-S.sort.d} : {k, d: ['案件編號','_date','成績','缺失數'].includes(k) ? -1 : 1};
+    try{ localStorage.setItem('dk_sort_rec', JSON.stringify(S.sort)); }catch(e){}
+    renderCases();
+  });
+}
+function selectCase(i){
+  const c=S.cases.find(x=>x._i===i); if(!c) return;
+  const had = S.sel && (S.files.length || S.items.length);
+  if(had && S.sel._i!==i && !confirm('切換案件會清除目前已上傳的檔案與意見，確定？')) return;
+  if(S.sel && S.sel._i!==i){ S.files=[]; S.items=[]; S.manualTotals={}; }
+  S.sel=c;
+  const d = S.detailsByKey[c._date+'|'+c['工程名稱']] || S.detailsByName[c['工程名稱']] || {};
+  const date = c._date ? new Date(c._date) : null;
+  const before = date ? new Date(date.getTime()-86400000) : null;
+  S.base = {
+    '列管計畫名稱': d['所屬計畫']||'', '計畫主辦機關':'農業部農田水利署', '主管機關':'農業部',
+    '督導日期': rocDot(c._date), '標案名稱': c['工程名稱'], '地點': d['縣市鄉鎮']||'',
+    '主辦單位': c['單位']? ('農田水利署'+c['單位']).replace('農田水利署農田水利署','農田水利署') : '',
+    '發包預算': d['發包預算(千元)']||'', '契約金額': d['契約金額(千元)']||'',
+    '設計單位': d['設計單位']||'', '監造單位': d['監造單位']||'', '承包商': d['承包商']||'',
+    '工程概要':'', '進度截止日': rocDotFromDate(before), '預定進度':'', '實際進度':'', '預定經費':'', '實際經費':'',
+    '已完成':'', '未完成':'',
+    '督導委員': [c['委員1'],c['委員2']].filter(Boolean).join('、'),
+    '開工日期': d['開工日期']? rocDot(d['開工日期']) : '', '完工日期':'', '領隊': c['領隊']||'', '工作人員': c['工作人員']||'',
+    '督導分數': c['成績']||'', '等級':'', '檢驗拆驗':'無。'
+  };
+  if(S.xlsxRows) applyXlsx();
+  $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b>　<span class="muted">${esc(c._date)}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc(S.base['督導委員'])}｜領隊：${esc(c['領隊'])}</span>${Object.keys(d).length?'':'<br><span class="badge warn">清單連結查無此案的預算、廠商資料，請手動補填</span>'}</div>`;
+  renderCases(); renderBase(); renderFiles(); renderItems(); renderPreview();
+  loadSaved(c);
+}
+
+/* ---------- 已儲存的督導紀錄：選案件時自動帶入 ----------
+ * 有完整紀錄（本系統儲存）→ 帶回基本資料與全部意見（優點、缺點、建議）
+ * 只有缺失（舊資料）→ 由資料庫缺失帶入缺點，優點、建議需補登 */
+async function loadSaved(c){
+  const hasResult = (c['成績']!==''&&c['成績']!=null) || +c['缺失數']>0;
+  if(!hasResult) return;
+  const id=c['案件編號'];
+  let r; try{ r=await gs('getRecord', id); }catch(e){ return; }
+  if(!S.sel || S.sel['案件編號']!==id || S.items.length || S.files.length) return;   // 已切換案件或已開始輸入就不覆蓋
+  let note='';
+  if(r.content){
+    const ct=r.content;
+    S.base=Object.assign({}, S.base, ct.base||{});
+    S.items=(ct.items||[]).map(it=>({...it, id:S.seq++, src:'saved'}));
+    S.manualTotals=ct.manualTotals||{};
+    note=`已載入 ${r.savedAt||''} ${r.savedBy||''} 儲存的督導紀錄，可直接預覽、下載或修改後重新儲存`;
+  }else if(r.defects && r.defects.length){
+    S.items=r.defects.map(d=>{
+      const m=String(d.缺失紀錄||'').match(/^(.*?)(?:【([LMS])】)?\(([\d.]+)\)\s*$/);
+      const code=String(d.缺失代碼||(m&&m[3])||''), text=(m?m[1]:String(d.缺失紀錄||'')).trim();
+      return {id:S.seq++, src:'saved', committee:String(d.委員||''), sec:secFromCode(code)||'O', cat:'缺點',
+        text:text&&!/[。！？]$/.test(text)?text+'。':text, code, level:String(d.缺失等級||(m&&m[2])||'L')};
+    });
+    note=`資料庫中有 ${r.defects.length} 筆缺失（舊資料，沒有優點與建議），已帶入意見表，可補登後重新儲存`;
+  }
+  if(!note) return;
+  $('selectedCase').insertAdjacentHTML('beforeend', `<div class="note" style="margin-top:6px"><span class="badge ok">已建立</span> ${esc(note)}</div>`);
+  renderBase(); renderItems(); renderPreview();
+}
+
+/* =====================================================================
+ * 2. 檔案上傳與解析
+ * ===================================================================== */
+function setupDrop(){
+  const drop=$('drop'), inp=$('fileInput');
+  drop.onclick=()=>inp.click();
+  inp.onchange=()=>{ addFiles([...inp.files]); inp.value=''; };
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',e=>addFiles([...e.dataTransfer.files]));
+}
+function guessCommittee(name, idx){
+  const names=(S.base['督導委員']||'').split(/[、,，\s]+/).filter(Boolean);
+  const hit=names.find(n=>name.includes(n)); if(hit) return hit;
+  return '';   // 未指定：AI 會依簽名判斷；同一委員的多頁請手動指定同一委員，以便合併辨識
+}
+async function addFiles(list){
+  if(!S.sel){ toast('請先選擇案件'); return; }
+  for(const f of list){
+    const ext=(f.name.split('.').pop()||'').toLowerCase();
+    const rec={id:S.seq++, file:f, name:f.name, ext, status:'解析中…', committee:guessCommittee(f.name, S.files.length), text:'', meta:{}, thumbs:[], kind:''};
+    S.files.push(rec); renderFiles();
+    try{ await parseFile(rec); }catch(e){ rec.status='解析失敗：'+(e.message||e); rec.kind='error'; }
+    renderFiles(); renderItems(); renderPreview();
+  }
+}
+async function parseFile(rec){
+  const f=rec.file, ext=rec.ext;
+  if(ext==='docx'){
+    const zip=await JSZip.loadAsync(f); const xml=await zip.file('word/document.xml').async('string');
+    rec.text=xmlParagraphs(xml,'w:p','w:t',['w:tab'],['w:br','w:cr']).join('\n'); rec.kind='para';
+  }else if(ext==='odt'){
+    const zip=await JSZip.loadAsync(f); const xml=await zip.file('content.xml').async('string');
+    rec.text=odtParagraphs(xml).join('\n'); rec.kind='para';
+  }else if(ext==='txt'){
+    rec.text=await f.text(); rec.kind='line';
+  }else if(ext==='pdf'){
+    const {text,thumbs}=await pdfText(f); rec.thumbs=thumbs;
+    if(text.replace(/\s/g,'').length>80){ rec.text=text; rec.kind='line'; }
+    else { rec.kind='needOcr'; rec.status='掃描檔，請按「AI 辨識」（或 Google OCR＋AI 判讀）'; return; }
+  }else if(/^(jpe?g|png|gif|webp|bmp|heic|tiff?)$/.test(ext) || (f.type||'').startsWith('image/')){
+    rec.thumbs=[URL.createObjectURL(f)]; rec.kind='needOcr'; rec.status='影像檔，請按「AI 辨識」（或 Google OCR＋AI 判讀）'; return;
+  }else if(ext==='doc'){
+    rec.kind='needOcr'; rec.status='舊版 Word：請按「Google 轉檔＋AI 判讀」（Google 先轉成文字，再由 AI 整理）'; return;
+  }else{ throw new Error('不支援的檔案類型'); }
+  applyParse(rec);
+}
+function applyParse(rec){
+  const r=parseScoreSheet(rec.text, rec.kind==='para');
+  rec.meta=r.meta;
+  if(r.meta.signer && !rec._manualCommittee){ const n=(S.base['督導委員']||'').split('、').find(x=>r.meta.signer.includes(x)); if(n) rec.committee=n; }
+  S.items = S.items.filter(it=>it.src!==rec.id).concat(r.items.map(it=>({...it, id:S.seq++, src:rec.id, committee:rec.committee})));
+  if(r.meta.plan && !S.base['預定進度']) S.base['預定進度']=r.meta.plan;
+  if(r.meta.actual && !S.base['實際進度']) S.base['實際進度']=r.meta.actual;
+  const nG=r.items.filter(i=>i.cat==='優點').length, nB=r.items.filter(i=>i.cat==='缺點').length, nS=r.items.length-nG-nB;
+  rec.status=`優點 ${nG}、缺點 ${nB}${nS?`、建議 ${nS}`:''}`+(r.meta.total?`｜總分 ${r.meta.total}`:'');
+  rec.titleOk = !S.sel || rec.text.replace(/\s/g,'').includes(String(S.sel['工程名稱']).replace(/\s/g,'').slice(0,8));
+  renderBase();
+}
+
+/** 取 Word / 一般 XML 段落文字；排除巢狀文字方塊重複 */
+function xmlParagraphs(xml, pTag, tTag, tabTags, brTags){
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  const out=[];
+  for(const p of doc.getElementsByTagName(pTag)){
+    let s='';
+    const walk=n=>{ for(const c of n.childNodes){
+      if(c.nodeType!==1) continue;
+      if(c.nodeName===pTag) continue;                 // 巢狀段落（文字方塊）另行處理
+      if(c.nodeName===tTag) s+=c.textContent;
+      else if(tabTags.includes(c.nodeName)) s+=' ';
+      else if(brTags.includes(c.nodeName)) s+=' ';
+      else walk(c);
+    }};
+    walk(p); if(s.trim()) out.push(s);
+  }
+  return out;
+}
+/** ODT 段落文字 */
+function odtParagraphs(xml){
+  const doc=new DOMParser().parseFromString(xml,'application/xml'); const out=[];
+  const isP=n=>n.nodeName==='text:p'||n.nodeName==='text:h';
+  const all=[...doc.getElementsByTagName('text:p'),...doc.getElementsByTagName('text:h')];
+  all.sort((a,b)=> a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+  for(const p of all){
+    let s='';
+    const walk=n=>{ for(const c of n.childNodes){
+      if(c.nodeType===3){ s+=c.nodeValue; continue; }
+      if(c.nodeType!==1 || isP(c)) continue;
+      if(c.nodeName==='text:s') s+=' '.repeat(+c.getAttribute('text:c')||1);
+      else if(c.nodeName==='text:tab'||c.nodeName==='text:line-break') s+=' ';
+      else walk(c);
+    }};
+    walk(p); if(s.trim()) out.push(s);
+  }
+  return out;
+}
+
+/* ---------- pdf.js（動態載入） ---------- */
+let _pdfjs=null;
+async function getPdfjs(){
+  if(_pdfjs) return _pdfjs;
+  const lib=await import(PDFJS_URL);
+  try{
+    const code=await (await fetch(PDFJS_WORKER_URL)).text();
+    lib.GlobalWorkerOptions.workerPort=new Worker(URL.createObjectURL(new Blob([code],{type:'text/javascript'})),{type:'module'});
+  }catch(e){ lib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER_URL; }
+  return _pdfjs=lib;
+}
+async function pdfText(file){
+  const lib=await getPdfjs();
+  const pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  const lines=[], thumbs=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const tc=await page.getTextContent();
+    // 依 y 座標分行、x 座標排序
+    const rows=[];
+    tc.items.forEach(it=>{ if(!it.str) return; const y=Math.round(it.transform[5]); let r=rows.find(r=>Math.abs(r.y-y)<=3); if(!r){r={y,parts:[]};rows.push(r);} r.parts.push({x:it.transform[4],s:it.str}); });
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>lines.push(r.parts.sort((a,b)=>a.x-b.x).map(x=>x.s).join('').replace(/\s{2,}/g,' ')));
+    if(p<=6){ const vp=page.getViewport({scale:1.4}); const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; thumbs.push(cv.toDataURL('image/jpeg',.85)); }
+  }
+  return {text:lines.join('\n'), thumbs};
+}
+
+/* ---------- AI 影像辨識（Gemini，經 Apps Script 伺服端） ---------- */
+function aiCapable(rec){ return rec.ext==='pdf' || /^(jpe?g|png|gif|webp|bmp|heic|tiff?)$/.test(rec.ext) || (rec.file.type||'').startsWith('image/'); }
+async function fileToAiPart(rec){
+  if(rec.ext==='pdf') return {data: await blobToB64(rec.file), mimeType:'application/pdf'};
+  return {data: await blobToB64(await shrinkImage(rec.file, 2000)), mimeType:'image/jpeg'};
+}
+function normText(t){
+  let s=String(t||'').trim().replace(/\s+/g,' ').replace(/(?<=[\u4e00-\u9fff])\s*,\s*/g,'，').replace(/(?<=[\u4e00-\u9fff])\s*;\s*/g,'；');
+  if(s && !/[。！？]$/.test(s)) s+='。'; return s;
+}
+async function aiRecognizeGroup(recs){
+  recs=recs.slice().sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant',{numeric:true}));
+  recs.forEach(r=>{ r.status='AI 辨識中…（約 10～40 秒）'; }); renderFiles();
+  try{
+    const pages=[]; for(const r of recs) pages.push(await fileToAiPart(r));
+    const names=(S.base['督導委員']||'').split('、').filter(Boolean);
+    const res=await gs('aiRecognize', pages, names);
+    applyAiResult(recs, res, 'AI 辨識');
+  }catch(e){ recs.forEach(r=>{ r.status='AI 辨識失敗：'+(e.message||e); }); }
+  renderFiles(); renderItems(); renderPreview();
+}
+/** 將 AI 結構化結果套入（影像辨識與 OCR＋AI 判讀共用） */
+function applyAiResult(recs, res, label){
+    const names=(S.base['督導委員']||'').split('、').filter(Boolean);
+    const head=recs[0];
+    let who=head.committee;
+    if(!head._manualCommittee && res.committee){ const n=names.find(x=>res.committee.includes(x)||x.includes(res.committee)); if(n) who=n; }
+    recs.forEach(r=>{ r.committee=who; });
+    const ids=new Set(recs.map(r=>r.id));
+    const items=(res.items||[]).filter(x=>String(x.text||'').trim() && !/^無[。.]?$/.test(String(x.text).trim())).map(x=>{
+      const code=String(x.code||'').replace(/[^\d.]/g,'').replace(/^\.+|\.+$/g,'');
+      const lv=String(x.level||'').toUpperCase().trim();
+      const cat=CATS.includes(x.category)?x.category:'缺點';
+      return {id:S.seq++, src:head.id, committee:who, sec:(x.section in SEC_ORDER)?x.section:'O', cat, text:normText(x.text), code,
+        level:/^[LMS]$/.test(lv)?lv:(cat==='缺點'?'L':''), levelGuess:cat==='缺點' && !!code && !/^[LMS]$/.test(lv), uncertain:!!x.uncertain};
+    });
+    S.items=S.items.filter(it=>!ids.has(it.src)).concat(items);
+    head.meta={...(head.meta||{}), total:String(res.totalScore||'').replace(/[^\d.]/g,'')};
+    if(res.planProgress && !S.base['預定進度']) S.base['預定進度']=String(res.planProgress).replace(/[%％\s]/g,'');
+    if(res.actualProgress && !S.base['實際進度']) S.base['實際進度']=String(res.actualProgress).replace(/[%％\s]/g,'');
+    const u=res._usage||{}, g=items.filter(i=>i.cat==='優點').length, b=items.filter(i=>i.cat==='缺點').length, unc=items.filter(i=>i.uncertain).length;
+    head.status=`${label}完成：優點 ${g}、缺點 ${b}、建議 ${items.length-g-b}${head.meta.total?`｜總分 ${head.meta.total}`:''}${unc?`｜${unc} 條字跡不確定，請核對`:''}｜${res._model}，${u.promptTokenCount||0}+${u.candidatesTokenCount||0} tokens`;
+    recs.slice(1).forEach(r=>{ r.status=`已與「${head.name}」合併辨識`; });
+    recs.forEach(r=>{ r.ai=true; r.titleOk=undefined; });
+    renderBase();
+}
+$('btnAiAll').onclick=async()=>{
+  const recs=S.files.filter(aiCapable);
+  if(!recs.length){ toast('沒有可 AI 辨識的照片或 PDF'); return; }
+  const groups=[], byWho={};
+  recs.forEach(r=>{ if(r.committee){ (byWho[r.committee]=byWho[r.committee]||[]).push(r); } else groups.push([r]); });
+  Object.values(byWho).forEach(g=>groups.unshift(g));
+  for(const g of groups) await aiRecognizeGroup(g);
+  toast('AI 辨識完成，請對照原稿核對');
+};
+
+/* ---------- Google 文件辨識（Apps Script 伺服端） ---------- */
+async function ocrFile(rec){
+  rec.status='辨識中（Google 文件）…'; renderFiles();
+  try{
+    let blob=rec.file, mime=rec.file.type||'application/octet-stream';
+    if(mime.startsWith('image/') && mime!=='image/gif'){ blob=await shrinkImage(rec.file); mime='image/jpeg'; }
+    if(rec.ext==='doc') mime='application/msword';
+    const b64=await blobToB64(blob);
+    rec.text=await gs('convertToText', b64, mime, rec.name);
+    rec.kind='line'; rec.ocr=true;
+    rec.status='OCR 完成，AI 判讀整理中…'; renderFiles();
+    const res=await gs('aiStructureText', rec.text, (S.base['督導委員']||'').split('、').filter(Boolean));
+    applyAiResult([rec], res, 'Google OCR＋AI 判讀');
+  }catch(e){ rec.status='辨識失敗：'+(e.message||e); }
+  renderFiles(); renderItems(); renderPreview();
+}
+function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); }); }
+async function shrinkImage(file, max=2400){
+  const bmp=await createImageBitmap(file, {imageOrientation:'from-image'});
+  const k=Math.min(1, max/Math.max(bmp.width,bmp.height));
+  const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*k); cv.height=Math.round(bmp.height*k);
+  cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
+  return await new Promise(r=>cv.toBlob(r,'image/jpeg',.9));
+}
+
+/* =====================================================================
+ * 評分表解析（核心）
+ *   paraMode=true：Word/ODT，每一段即一條
+ *   paraMode=false：PDF/OCR 文字，依編號或句點判斷換條
+ * ===================================================================== */
+const FORM_SKIP = [/^註[:：]/, /^\d\.\s*(各項優、缺點|有關缺點部分)/, /^\(?輕微\[?L/, /^工程督導評分表/, /^(列管計畫名稱|標案名稱|督導日期)/,
+  /^辦理工地勞工安全衛生事項之督導/, /^◎評分原則/, /^\d\.\s*含(工程規劃設計|監造單位之建築師)/, /^\d\.\s*其他相關建議/,
+  /^\(註[:：]/, /^（註[:：]/, /^第\s*\d+\s*頁/, /^[\d\s]*$/];
+// 評分表上印好的說明文字（被換行切斷時用來比對濾除）
+const FORM_SENTENCES=['含工程規劃設計、生態環保、圖說規範、變更設計等情形。',
+  '含監造單位之建築師，承攬廠商之專任工程人員、工地主任等執行相關法令及契約規定等事項。','其他相關建議。',
+  '如發現有安全性、施工性及維護性疑義等情形，應加以記錄。','辦理工地勞工安全衛生事項之督導、公共環境與安全之維護及其他工地行政事務等'];
+function parseScoreSheet(text, paraMode){
+  const meta={};
+  const flat=text.replace(/　/g,' ');
+  let m;
+  if((m=flat.match(/總計\s*[(（]\s*T\s*[)）]\s*[＝=]?\s*(\d{2,3}(?:\.\d+)?)/))) meta.total=m[1];
+  if((m=flat.match(/預定進度\s*[:：]\s*([\d.]+)\s*[%％]/))) meta.plan=m[1];
+  if((m=flat.match(/實際進度\s*[:：]\s*([\d.]+)\s*[%％]/))) meta.actual=m[1];
+  if((m=flat.match(/督導委員簽名\s*[:：]\s*([^\n]{2,10})/))) meta.signer=m[1].trim();
+
+  const items=[]; let sec=null, mode=null, cur=null, inInstr=false;
+  const lines=flat.split(/\n/).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const push=(raw)=>{ cur={raw, sec, cat: (sec==='S5'?'規劃設計建議': sec==='S6'?'其他建議': mode)}; items.push(cur); };
+  for(let line of lines){
+    // 說明文字（括號內查核要點）略過
+    if(inInstr){ if(/[)）]\s*$/.test(line)) inInstr=false; continue; }
+    if(/^[(（]\s*(請查核|如發現|請依|註)/.test(line)){ if(!/[)）]\s*$/.test(line)) inInstr=true; continue; }
+    // 段落標題
+    let h=null;
+    if(/^一\s*、\s*品質管理制度/.test(line)) h='Q';
+    else if(/^[AＡ]\s*[、.．]\s*主辦機關/.test(line)) h='A';
+    else if(/^[(（]\s*一\s*[)）]\s*(工程)?主辦機關/.test(line)) h='A1';
+    else if(/^[(（]\s*二\s*[)）]\s*監造單位/.test(line)) h='A2';
+    else if(/^[BＢ]\s*[、.．]\s*承攬廠商/.test(line)) h='B';
+    else if(/^二\s*、\s*施工品質/.test(line)) h='W';
+    else if(/^[(（]\s*一\s*[)）]\s*混凝土/.test(line)) h='W1';
+    else if(/^[(（]\s*二\s*[)）]\s*材料設備/.test(line)) h='W2';
+    else if(/^[(（]\s*三\s*[)）]\s*(施工)?安全衛生/.test(line)) h='W3';
+    else if(/^三\s*、\s*施工進度/.test(line)) h='P';
+    else if(/^四\s*、\s*評分/.test(line)) h='T';
+    else if(/^五\s*、\s*規劃設計/.test(line)) h='S5';
+    else if(/^六\s*、\s*其他建議/.test(line)) h='S6';
+    else if(/督導委員簽名/.test(line)) h='END';
+    if(h){ sec=h; mode=null; cur=null; continue; }
+    if(['Q','A','W','P','T','END',null].includes(sec)) continue;
+    if(FORM_SKIP.some(r=>r.test(line))) continue;
+    // 優點／缺點標記
+    const mk=line.match(/^(優點|缺點)\s*[:：]?\s*(.*)$/);
+    if(mk){ mode=mk[1]; cur=null; line=mk[2].trim(); if(!line) continue; }
+    if(!(sec==='S5'||sec==='S6') && !mode) continue;
+    if(/^(無|無。|無意見|尚無|N\/?A)$/i.test(line)) continue;
+    // 只有代碼／等級的行（手寫稿代碼常寫在右側）→ 併入上一條
+    if(cur && /^[\d.．。\s]{4,}\s*[\[(（【]?\s*[LMSlZz乙ㄥ]?\s*\.?\s*[\])）】]?\s*$/.test(line) && /\d\.\d/.test(line)){ cur.raw+=' '+line; continue; }
+    const numbered=/^\d{1,2}(\s*[.、．)）](?!\d)|\s+(?=[\u4e00-\u9fff]))/.test(line);
+    if(paraMode || numbered || !cur || endsItem(cur.raw)) push(line);
+    else cur.raw += line;
+  }
+  const formText=FORM_SENTENCES.join('').replace(/[\s，。、；：()（）.,]/g,'');
+  const isForm=t=>{ const k=t.replace(/[\s，。、；：()（）.,]/g,''); return k.length>=3 && formText.includes(k); };
+  return {meta, items: items.map(finishItem).filter(it=>it.text && !isForm(it.text))};
+}
+function endsItem(s){ return /[。！？]\s*$|[\])）】]\s*[。.]?\s*$/.test(s.trim()) && /[。]|[LMS][\])）】]/.test(s); }
+/** 從一條文字拆出：內容、缺失代碼、等級 */
+function finishItem(it){
+  let s=it.raw.replace(/^\d{1,2}(\s*[.、．)）](?!\d)|\s+(?=[\u4e00-\u9fff]))\s*/,'');
+  s=s.replace(/(\d)\s*[.．。]\s*(?=\d{2}(?!\d))/g,'$1.');               // 「4. 01. 06」→「4.01.06」
+  let code='', level='', levelGuess=false;
+  const codes=[...s.matchAll(/(?<![\d.])([4-6]\.\d{2}(?:\.\d{2}){0,3})(?![\d])/g)];
+  if(codes.length){ const c=codes[codes.length-1]; code=c[1]; s=s.slice(0,c.index)+s.slice(c.index+c[0].length); }
+  const lv=[...s.matchAll(/[\[(（【]\s*([LMSlmsZz乙ㄥ])\s*\.?\s*[\])）】]/g)];
+  if(lv.length){ const l=lv[lv.length-1]; let v=l[1].toUpperCase(); if(!'LMS'.includes(v)){ v='L'; levelGuess=true; } level=v; s=s.slice(0,l.index)+s.slice(l.index+l[0].length); }
+  s=s.replace(/[\[(（【]\s*[\])）】]/g,'').replace(/\s+/g,' ');
+  s=s.replace(/(?<=[\u4e00-\u9fff）)\d%])\s*,\s*/g,'，').replace(/(?<=[\u4e00-\u9fff])\s*;\s*/g,'；').replace(/(?<=[\u4e00-\u9fff])\s*:\s*/g,'：');
+  s=s.replace(/\s*([，。；、])/g,'$1').replace(/[，、；]+(?=[。]|$)/g,'').trim();
+  s=s.replace(/[\s.．。，,、；;]+$/,'');
+  if(s && !/[。！？)）]$/.test(s)) s+='。'; else if(s && /[)）]$/.test(s)) s+='。';
+  if(it.cat==='缺點' && code && !level){ level='L'; levelGuess=true; }
+  return {sec:it.sec||'O', cat:it.cat||'缺點', text:s, code, level, levelGuess};
+}
+
+/* =====================================================================
+ * 標案自選欄位表（xlsx）— 以 JSZip 簡易讀取
+ * ===================================================================== */
+async function readXlsx(file){
+  const zip=await JSZip.loadAsync(file);
+  const ss=zip.file('xl/sharedStrings.xml')? await zip.file('xl/sharedStrings.xml').async('string') : '';
+  const sst=[...new DOMParser().parseFromString(ss||'<a/>','application/xml').getElementsByTagName('si')].map(si=>[...si.getElementsByTagName('t')].map(t=>t.textContent).join(''));
+  const sheetName=Object.keys(zip.files).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+  const doc=new DOMParser().parseFromString(await zip.file(sheetName).async('string'),'application/xml');
+  const rows=[];
+  for(const r of doc.getElementsByTagName('row')){
+    const row=[];
+    for(const c of r.getElementsByTagName('c')){
+      const ref=c.getAttribute('r'); const col=ref.replace(/\d+/g,'').split('').reduce((a,ch)=>a*26+ch.charCodeAt(0)-64,0)-1;
+      const v=c.getElementsByTagName('v')[0]; const t=c.getAttribute('t');
+      let val = t==='s'? sst[+v?.textContent] : t==='inlineStr'? c.textContent : (v? v.textContent : '');
+      row[col]=val;
+    }
+    rows.push(row);
+  }
+  const hi=rows.findIndex(r=>r&&r.includes('標案名稱'));
+  if(hi<0) throw new Error('找不到「標案名稱」欄');
+  const hdr=rows[hi].map(h=>String(h||'').replace(/\s+/g,''));
+  return rows.slice(hi+1).filter(r=>r&&r.length).map(r=>Object.fromEntries(hdr.map((h,i)=>[h,r[i]??''])));
+}
+const excelDate = v => { const n=+v; if(n>20000&&n<80000){ const d=new Date(Date.UTC(1899,11,30)+n*86400000); return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); } return parseRoc(v)||(isNaN(Date.parse(v))?null:new Date(v)); };
+function applyXlsx(){
+  if(!S.sel||!S.xlsxRows) return;
+  const r=S.xlsxRows.find(x=>String(x['標案名稱']).trim()===S.sel['工程名稱']);
+  if(!r){ $('xlsxMsg').textContent='自選欄位表中查無此案'; return; }
+  const fill=(k,v)=>{ if(v && !S.base[k]) S.base[k]=v; };
+  fill('工程概要', String(r['工程概要']||'').split(/\n/).map(x=>x.replace(/^\s*\d+[.、]\s*/,'').replace(/：/g,'').trim()).filter(Boolean).join('、'));
+  fill('開工日期', rocDotFromDate(excelDate(r['實際開工日期'])));
+  fill('完工日期', rocDotFromDate(excelDate(r['變更設計後預定完工日期']||r['預定完工日期'])));
+  if(r['計畫名稱'] && r['計畫名稱']!=='無') fill('列管計畫名稱', r['計畫名稱']);
+  fill('發包預算', r['發包預算']); fill('契約金額', r['決標金額']);
+  fill('設計單位', r['設計單位']); fill('監造單位', r['監造單位']); fill('承包商', r['得標廠商']); fill('地點', r['縣市鄉鎮']);
+  $('xlsxMsg').textContent='已由自選欄位表補帶資料';
+}
+
+/* =====================================================================
+ * 3. 基本資料表單
+ * ===================================================================== */
+function renderBase(){
+  renderManual();
+  if(!S.sel){ $('baseForm').innerHTML='<span class="muted">請先選擇案件</span>'; return; }
+  $('baseForm').innerHTML = BASE_FIELDS.map(([k,lbl,wide])=>{
+    const v=S.base[k]??''; const area = ['工程概要','已完成','未完成','列管計畫名稱'].includes(k);
+    const empty = !String(v).trim() && k!=='等級';
+    return `<label class="${wide?'wide':''}">${esc(lbl)}${area?`<textarea rows="2" data-k="${k}" class="${empty?'empty':''}">${esc(v)}</textarea>`:`<input type="text" data-k="${k}" value="${esc(v)}" class="${empty?'empty':''}">`}</label>`;
+  }).join('');
+  $('baseForm').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{ S.base[el.dataset.k]=el.value; el.classList.toggle('empty',!el.value.trim()&&el.dataset.k!=='等級'); renderPreview(); });
+}
+
+/* =====================================================================
+ * 4. 優缺點編輯表
+ * ===================================================================== */
+function renderFiles(){
+  setTimeout(renderViewer,0);
+  $('fileList').innerHTML = S.files.map(f=>{
+    const th = f.thumbs[0]? `<img src="${f.thumbs[0]}" alt="">` : esc(f.ext.toUpperCase());
+    const names=(S.base['督導委員']||'').split('、').filter(Boolean);
+    const opts=[...new Set([...names, f.committee].filter(Boolean))].map(n=>`<option ${n===f.committee?'selected':''}>${esc(n)}</option>`).join('');
+    const canOcr = ['needOcr'].includes(f.kind) || ['doc','pdf'].includes(f.ext) || f.thumbs.length;
+    return `<div class="file" data-id="${f.id}">
+      <div class="thumb" data-act="view">${th}</div>
+      <div><div class="name">${esc(f.name)}</div>
+        <div class="muted">${esc(f.status)} ${f.titleOk===false?'<span class="badge warn">檔案內未見所選工程名稱，請確認</span>':''} ${f.ocr?'<span class="badge warn">OCR</span>':''}</div></div>
+      <div class="acts">
+        <select data-act="who" title="此檔委員">${opts}<option value="" ${f.committee?'':'selected'}>（未指定）</option></select>
+        ${aiCapable(f)?`<button class="primary" data-act="ai">AI 辨識</button>`:''}
+        ${canOcr?`<button class="${f.ext==='doc'?'primary':'ghost'}" data-act="ocr">${f.ext==='doc'?'Google 轉檔＋AI 判讀':'Google OCR＋AI 判讀'}</button>`:''}
+        <button class="ghost" data-act="view">檢視</button>
+        <button class="ghost" data-act="del">移除</button>
+      </div></div>`;
+  }).join('');
+  $('fileList').querySelectorAll('.file').forEach(el=>{
+    const f=S.files.find(x=>x.id===+el.dataset.id);
+    el.querySelectorAll('[data-act]').forEach(b=>{
+      const act=b.dataset.act;
+      if(act==='who') b.onchange=()=>{ f.committee=b.value; f._manualCommittee=true; S.items.forEach(it=>{ if(it.src===f.id) it.committee=b.value; }); renderItems(); renderPreview(); };
+      else b.onclick=()=>{
+        if(act==='ocr') ocrFile(f);
+        if(act==='ai') aiRecognizeGroup([f]);
+        if(act==='del'){ S.files=S.files.filter(x=>x!==f); S.items=S.items.filter(it=>it.src!==f.id); renderFiles(); renderItems(); renderPreview(); }
+        if(act==='view'){ if(f.thumbs.length){ S.viewFile=f; S.viewPage=0; openViewer(); } else showFile(f); }
+      };
+    });
+  });
+}
+/* ---------- 原稿對照（左側） ---------- */
+function openViewer(){ $('split').classList.add('on'); $('toggleViewer').textContent='隱藏原稿對照'; renderViewer(); $('split').scrollIntoView({behavior:'smooth',block:'start'}); }
+function renderViewer(){
+  const v=$('viewer'); if(!$('split').classList.contains('on')) return;
+  const files=S.files.filter(x=>x.thumbs.length);
+  if(!files.length){ v.innerHTML='<p class="muted">尚無可對照的照片或 PDF。</p>'; return; }
+  if(!files.includes(S.viewFile)){ S.viewFile=files[0]; S.viewPage=0; }
+  const f=S.viewFile, pages=f.thumbs; S.viewPage=Math.max(0,Math.min(S.viewPage||0,pages.length-1)); f.rot=f.rot||0;
+  v.innerHTML=`<div class="vbar"><select id="vFile">${files.map(x=>`<option value="${x.id}" ${x===f?'selected':''}>${esc(x.name)}（${esc(x.committee||'未指定')}）</option>`).join('')}</select>
+    ${pages.length>1?`<button class="ghost" id="vPrev">◀</button><span class="muted">第 ${S.viewPage+1}/${pages.length} 頁</span><button class="ghost" id="vNext">▶</button>`:''}
+    <button class="ghost" id="vRot">旋轉</button><span class="muted">點圖放大／縮小</span></div>
+    <div style="overflow:auto"><img id="vImg" src="${pages[S.viewPage]}" style="transform:rotate(${f.rot}deg)"></div>`;
+  $('vFile').onchange=e=>{ S.viewFile=S.files.find(x=>x.id===+e.target.value); S.viewPage=0; renderViewer(); };
+  if($('vPrev')){ $('vPrev').onclick=()=>{S.viewPage--;renderViewer();}; $('vNext').onclick=()=>{S.viewPage++;renderViewer();}; }
+  $('vRot').onclick=()=>{ f.rot=(f.rot+90)%360; renderViewer(); };
+  $('vImg').onclick=e=>e.target.classList.toggle('zoom');
+}
+function showFile(f){
+  const imgs=f.thumbs.map(u=>`<img src="${u}">`).join('');
+  $('modalInner').innerHTML = `<div class="row" style="justify-content:space-between"><b>${esc(f.name)}</b><button id="mClose">關閉</button></div>${imgs}${f.text?`<h4>擷取文字</h4><pre>${esc(f.text)}</pre>`:''}`;
+  $('modal').classList.add('show'); $('mClose').onclick=()=>$('modal').classList.remove('show');
+}
+$('modal').onclick=e=>{ if(e.target.id==='modal') $('modal').classList.remove('show'); };
+$('toggleViewer').onclick=()=>{ const on=$('split').classList.toggle('on'); $('toggleViewer').textContent=on?'隱藏原稿對照':'顯示原稿對照'; if(on) renderViewer(); };
+
+function renderItems(){
+  const flt=$('itemFilter').value;
+  const names=[...new Set([...(S.base['督導委員']||'').split('、').filter(Boolean), ...S.items.map(i=>i.committee).filter(Boolean)])];
+  const rows=S.items.filter(it=>!flt||it.cat===flt);
+  const secOpts=v=>SECTIONS.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}</option>`).join('');
+  const catOpts=v=>CATS.map(c=>`<option ${c===v?'selected':''}>${c}</option>`).join('');
+  const whoOpts=v=>[...names,''].map(n=>`<option value="${esc(n)}" ${n===v?'selected':''}>${esc(n||'（未指定）')}</option>`).join('');
+  $('itemTable').innerHTML = `<thead><tr><th>委員</th><th>段落</th><th>類別</th><th style="width:50%">內容</th><th>缺失代碼</th><th>等級</th><th></th></tr></thead><tbody>${
+    rows.map(it=>{
+      const known = it.code && S.codes[it.code];
+      const flag = it.uncertain || (it.cat==='缺點' && (!it.code || (Object.keys(S.codes).length && !known) || it.levelGuess));
+      return `<tr data-id="${it.id}" class="${flag?'flag':''}">
+        <td><select data-f="committee">${whoOpts(it.committee)}</select></td>
+        <td><select data-f="sec">${secOpts(it.sec)}</select></td>
+        <td><select data-f="cat">${catOpts(it.cat)}</select></td>
+        <td><textarea data-f="text" rows="2">${esc(it.text)}</textarea>${it.uncertain?'<div class="codehint"><span class="badge warn">AI：字跡不確定，請對照原稿</span></div>':''}</td>
+        <td>${it.cat==='缺點'?`<input data-f="code" list="codeList" value="${esc(it.code)}" placeholder="4.01.06.02"><div class="codehint">${
+          !it.code?'<span class="badge err">缺代碼</span>': known? esc(known).slice(0,60)+(known.length>60?'…':'')+`<br><button class="ghost fillbtn" data-fill="1">帶入制式文字</button>` : (Object.keys(S.codes).length?'<span class="badge err">代碼表查無</span>':'')}</div>`:''}</td>
+        <td>${it.cat==='缺點'?`<select data-f="level">${['L','M','S'].map(l=>`<option ${l===it.level?'selected':''}>${l}</option>`).join('')}</select>${it.levelGuess?'<div class="codehint"><span class="badge warn">等級待確認</span></div>':''}`:''}</td>
+        <td><button class="ghost" data-del="1" title="刪除">✕</button></td></tr>`;
+    }).join('') || '<tr><td colspan="7" class="muted" style="padding:14px">尚無內容。上傳委員評分表，或按「新增一列」手動輸入（手寫稿可在「檢視」對照輸入）。</td></tr>'
+  }</tbody>`;
+  $('itemTable').querySelectorAll('tr[data-id]').forEach(tr=>{
+    const it=S.items.find(x=>x.id===+tr.dataset.id);
+    tr.querySelectorAll('[data-f]').forEach(el=>{
+      const f=el.dataset.f;
+      const ev = (el.tagName==='SELECT' || f==='code') ? 'change' : 'input';   // 代碼於離開欄位時才重繪，避免輸入中失焦
+      el.addEventListener(ev,()=>{
+        it[f] = f==='text' ? el.value : el.value.trim();
+        if(f==='level') it.levelGuess=false;
+        if(f==='code' && secFromCode(it.code)) it.sec=secFromCode(it.code);
+        if(f==='text') it.uncertain=false;
+        if(f==='cat' && it.cat==='缺點' && !it.level) it.level='L';
+        if(['cat','code','level'].includes(f)) renderItems();
+        renderPreview();
+      });
+    });
+    tr.querySelector('[data-del]').onclick=()=>{ S.items=S.items.filter(x=>x!==it); renderItems(); renderPreview(); };
+    const fb=tr.querySelector('[data-fill]');
+    if(fb) fb.onclick=()=>{ const t=String(S.codes[it.code]||'').replace(/□/g,'').replace(/[。\s]+$/,''); if(!t) return;
+      if(it.text.trim() && !confirm('以制式文字取代目前內容？')) return; it.text=t+'。'; renderItems(); renderPreview(); };
+    tr.querySelector('textarea[data-f="text"]').addEventListener('keydown',e=>{
+      if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault();
+        const n={id:S.seq++, src:'manual', committee:it.committee, sec:it.sec, cat:it.cat, text:'', code:'', level:it.cat==='缺點'?'L':''};
+        S.items.splice(S.items.indexOf(it)+1,0,n); renderItems(); renderPreview();
+        $('itemTable').querySelector(`tr[data-id="${n.id}"] textarea`)?.focus(); }
+    });
+  });
+  const c=k=>S.items.filter(i=>i.cat===k).length;
+  $('itemStat').textContent=`優點 ${c('優點')}｜缺點 ${c('缺點')}｜建議 ${c('規劃設計建議')+c('其他建議')}`;
+}
+$('itemFilter').onchange=renderItems;
+$('addItem').onclick=()=>{ if(!S.sel){toast('請先選擇案件');return;} const cat=$('itemFilter').value||'缺點'; S.items.push({id:S.seq++, src:'manual', committee:'', sec:'O', cat, text:'', code:'', level:cat==='缺點'?'L':''}); renderItems(); const tas=$('itemTable').querySelectorAll('textarea'); tas[tas.length-1]?.focus(); };
+$('mergeSame').onchange=renderPreview;
+
+/* ---------- 手動輸入 ---------- */
+/** 各委員總分（檔案辨識所得＋手動輸入；同一委員以手動輸入為準） */
+function allTotals(){
+  const m={};
+  S.files.forEach(f=>{ if(f.meta&&f.meta.total) m[f.committee||('檔'+f.id)]=Number(f.meta.total); });
+  Object.entries(S.manualTotals||{}).forEach(([k,v])=>{ if(v!==''&&v!=null&&!isNaN(v)) m[k||'（未指定）']=Number(v); });
+  return Object.values(m);
+}
+function renderManual(){
+  if(!$('mWho')) return;
+  const names=(S.base['督導委員']||'').split('、').filter(Boolean);
+  const cur=names.includes($('mWho').value)?$('mWho').value:(names[0]||'');
+  $('mWho').innerHTML=[...names,''].map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n||'（未指定）')}</option>`).join('');
+  if(!$('mCat').options.length) $('mCat').innerHTML=CATS.map(c=>`<option ${c==='缺點'?'selected':''}>${c}</option>`).join('');
+  $('mTotal').value=(S.manualTotals||{})[$('mWho').value]??'';
+}
+/** 依缺失代碼判斷評分表段落（對照缺失扣點表「1+2+3」欄：4.01→A1、4.02→A2、4.03→B、5.01~5.09→W1、5.10~5.13→W2、5.14~5.17→W3） */
+function secFromCode(code){
+  const m=String(code||'').match(/^(\d)\.(\d{2})/); if(!m) return '';
+  const a=+m[1], b=+m[2];
+  if(a===4) return b===1?'A1': b===2?'A2': b===3?'B':'';
+  if(a===5) return b<=9?'W1': b<=13?'W2': b<=17?'W3':'';
+  return '';
+}
+/** 把手動輸入的文字拆成多條意見 */
+function parseManual(text, cat){
+  const NUM=/^\d{1,2}\s*[.、．)）](?!\d)/;
+  const lines=String(text||'').replace(/　/g,' ').split(/\n/).map(x=>x.trim()).filter(Boolean);
+  const hasNum=lines.some(l=>NUM.test(l));
+  const raws=[]; let cur=null, c=cat;
+  for(let line of lines){
+    const mk=line.match(/^(優點|缺點|規劃設計建議|其他建議)\s*[:：]\s*(.*)$/);
+    if(mk){ c=mk[1]; cur=null; line=mk[2].trim(); if(!line) continue; }
+    if(/^(無|無。|無意見)$/.test(line)) continue;
+    if(!hasNum || NUM.test(line) || !cur){ cur={raw:line, sec:'O', cat:c}; raws.push(cur); }
+    else cur.raw+=line;
+  }
+  return raws.map(finishItem).filter(it=>it.text).map(it=>{
+    const sec = it.cat==='規劃設計建議'?'S5' : it.cat==='其他建議'?'S6' : (secFromCode(it.code)||'O');
+    return it.cat==='缺點' ? {...it, sec, level:it.level||'L'} : {...it, sec, code:'', level:'', levelGuess:false};
+  });
+}
+$('mWho').onchange=()=>{ $('mTotal').value=(S.manualTotals||{})[$('mWho').value]??''; };
+$('mTotal').oninput=()=>{
+  const v=$('mTotal').value.trim(), who=$('mWho').value;
+  if(v==='') delete S.manualTotals[who]; else S.manualTotals[who]=Number(v);
+  renderPreview();
+};
+$('mAdd').onclick=()=>{
+  if(!S.sel){ toast('請先選擇案件'); return; }
+  const who=$('mWho').value, cat=$('mCat').value;
+  const its=parseManual($('mText').value, cat);
+  if(!its.length){ toast('請先輸入意見內容'); return; }
+  its.forEach(it=>S.items.push({id:S.seq++, src:'manual', committee:who, ...it}));
+  $('mText').value='';
+  const b=its.filter(i=>i.cat==='缺點'), nc=b.filter(i=>!i.code).length;
+  $('mMsg').textContent=`已加入 ${its.length} 條（缺點 ${b.length}${nc?`，其中 ${nc} 條未填代碼`:''}）`;
+  renderItems(); renderPreview();
+};
+$('mAddCode').onclick=()=>{
+  if(!S.sel){ toast('請先選擇案件'); return; }
+  const code=$('mCode').value.trim().replace(/[^\d.]/g,'');
+  if(!code){ toast('請輸入缺失代碼'); return; }
+  const std=String(S.codes[code]||'').replace(/□/g,'').replace(/[。\s]+$/,'');
+  if(!std && !confirm('缺失扣點表查無代碼 '+code+'，仍要新增（內容需自行輸入）？')) return;
+  S.items.push({id:S.seq++, src:'manual', committee:$('mWho').value, sec:secFromCode(code)||'O', cat:'缺點', text:std?std+'。':'', code, level:$('mLevel').value});
+  $('mCode').value=''; $('mMsg').textContent=`已依代碼 ${code} 新增 1 條缺點`;
+  renderItems(); renderPreview();
+};
+
+/* =====================================================================
+ * 5. 組合紀錄表內容
+ * ===================================================================== */
+function committeeOrder(){ return (S.base['督導委員']||'').split('、').filter(Boolean); }
+function buildRecord(){
+  const order=committeeOrder(); const cIdx=n=>{ const i=order.indexOf(n); return i<0?99:i; };
+  const byPos=(a,b)=> (SEC_ORDER[a.sec]??99)-(SEC_ORDER[b.sec]??99) || cIdx(a.committee)-cIdx(b.committee) || S.items.indexOf(a)-S.items.indexOf(b);
+  const uniq=arr=>{ const seen=new Set(); return arr.filter(t=>{ const k=t.replace(/[\s。，、；]/g,''); if(!k||seen.has(k)) return false; seen.add(k); return true; }); };
+  const good=uniq(S.items.filter(i=>i.cat==='優點'&&i.text.trim()).sort(byPos).map(i=>i.text.trim()));
+  // 缺點：依代碼排序，同代碼合併
+  const bads=S.items.filter(i=>i.cat==='缺點'&&i.text.trim());
+  const merged=[]; const notes=[];
+  if($('mergeSame').checked){
+    const groups={};
+    bads.filter(b=>b.code).forEach(b=>(groups[b.code]=groups[b.code]||[]).push(b));
+    Object.keys(groups).sort((a,b)=>codeKey(a).localeCompare(codeKey(b))).forEach(code=>{
+      const g=groups[code].sort(byPos);
+      const texts=uniq(g.map(x=>x.text.trim().replace(/[。；\s]+$/,'')));
+      const lv=g.map(x=>x.level).sort((a,b)=>severity(b)-severity(a))[0]||'L';
+      if(g.length>1) notes.push(`${code} 有 ${g.length} 條（${[...new Set(g.map(x=>x.committee||'未指定'))].join('、')}）已合併，請檢查文字是否重複`);
+      merged.push({text:texts.join('；')+'。', code, level:lv, committee:[...new Set(g.map(x=>x.committee).filter(Boolean))].join('、')});
+    });
+  }else{
+    bads.filter(b=>b.code).sort((a,b)=>codeKey(a.code).localeCompare(codeKey(b.code))||byPos(a,b)).forEach(b=>merged.push({text:b.text.trim(),code:b.code,level:b.level||'L',committee:b.committee||''}));
+  }
+  bads.filter(b=>!b.code).forEach(b=>merged.push({text:b.text.trim(),code:'',level:'',committee:b.committee||''}));
+  const bad=merged.map(b=> b.code? `${b.text}${b.code}(${b.level})` : b.text);
+  const plan=uniq(S.items.filter(i=>i.cat==='規劃設計建議'&&i.text.trim()).sort(byPos).map(i=>i.text.trim()));
+  const other=uniq(S.items.filter(i=>i.cat==='其他建議'&&i.text.trim()).sort(byPos).map(i=>i.text.trim()));
+  return {good, bad, badObjs:merged, plan, other, notes};
+}
+function v(k){ const s=String(S.base[k]??'').trim(); return s||PH; }
+function recordFields(){
+  const B=S.base; const cut=parseRoc(B['進度截止日']);
+  const score=String(B['督導分數']||'').trim(); const grade=String(B['等級']||'').trim()||gradeOf(score);
+  const d1=parseRoc(B['開工日期']), d2=parseRoc(B['完工日期']);
+  const money=k=>{ const s=String(B[k]||'').trim(); return s? thousand(s) : PH; };
+  return {
+    '列管計畫名稱':[v('列管計畫名稱')], '計畫主辦機關':[v('計畫主辦機關')], '主管機關':[v('主管機關')],
+    '督導日期':[v('督導日期')], '標案名稱':[v('標案名稱')], '地點':[v('地點')], '主辦單位':[v('主辦單位')],
+    '發包預算':[money('發包預算')], '契約金額':[money('契約金額')],
+    '設計單位':[v('設計單位')], '監造單位':[v('監造單位')], '承包商':[v('承包商')], '工程概要':[v('工程概要')],
+    '進度':[`截至${cut?rocText(cut):PH}止：`,
+      `1.工程累計進度：預定 ${v('預定進度')}％；實際 ${v('實際進度')}％。`,
+      `2.經費累計支用：預定 ${v('預定經費')} 千元；實際 ${v('實際經費')} 千元。`,
+      `3.目前施工狀況：`, `(1)已完成工程內容：${v('已完成')}`, `(2)未完成工程內容：${v('未完成')}`],
+    '督導委員':[v('督導委員')],
+    '開完工':[`開工：${d1?rocText(d1):PH}`, `完工：${d2?rocText(d2):PH}`],
+    '領隊工作人員':[`領隊：${v('領隊')}`, `工作人員：${v('工作人員')}`],
+    '分數等級':[score? `${score}分(${grade||PH})` : PH],
+    '檢驗拆驗':[v('檢驗拆驗')]
+  };
+}
+
+/* ---------- 預覽 ---------- */
+function hl(s){ return esc(s).split(esc(PH)).join(`<mark>${esc(PH)}</mark>`); }
+function renderPreview(){
+  if(!S.sel){ $('paper').innerHTML='<p class="muted" style="font-family:sans-serif">請先選擇案件</p>'; $('checks').innerHTML=''; return; }
+  const F=recordFields(), R=buildRecord();
+  const P=k=>F[k].map(x=>`<p>${hl(x)}</p>`).join('');
+  const L=arr=> arr.length? `<ol>${arr.map(x=>`<li>${hl(x)}</li>`).join('')}</ol>` : '<p>無。</p>';
+  $('paper').innerHTML = `<h3>農業部農田水利署工程督導小組督導紀錄表</h3>
+  <table class="rec"><colgroup><col style="width:9%"><col style="width:6%"><col style="width:20%"><col style="width:11%"><col style="width:9%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:24%"></colgroup>
+  <tr><td class="lbl" colspan="2">列管計畫名稱</td><td colspan="4">${P('列管計畫名稱')}</td><td class="lbl" colspan="2">計畫主辦機關</td><td>${P('計畫主辦機關')}</td></tr>
+  <tr><td class="lbl" colspan="2">標案所屬工程主管機關</td><td colspan="4">${P('主管機關')}</td><td class="lbl" colspan="2">督導日期</td><td>${P('督導日期')}</td></tr>
+  <tr><td class="lbl" colspan="2">標案名稱</td><td colspan="4">${P('標案名稱')}</td><td class="lbl" colspan="2">地點</td><td>${P('地點')}</td></tr>
+  <tr><td class="lbl" colspan="2">標案主辦單位</td><td>${P('主辦單位')}</td><td class="lbl">發包預算(千元)</td><td colspan="2">${P('發包預算')}</td><td class="lbl" colspan="2">契約金額(千元)</td><td>${P('契約金額')}</td></tr>
+  <tr><td class="lbl" colspan="2">設計單位</td><td>${P('設計單位')}</td><td class="lbl">監造單位</td><td colspan="2">${P('監造單位')}</td><td class="lbl" colspan="2">承包商</td><td>${P('承包商')}</td></tr>
+  <tr><td class="lbl" colspan="2">工程概要</td><td colspan="7">${P('工程概要')}</td></tr>
+  <tr><td class="lbl" colspan="2">工程進度及經費支用及目前施工概況</td><td colspan="7">${P('進度')}</td></tr>
+  <tr><td class="lbl" colspan="2">督導委員</td><td colspan="3">${P('督導委員')}</td><td class="lbl" colspan="2">開工及預定完工日期</td><td colspan="2">${P('開完工')}</td></tr>
+  <tr><td class="lbl" colspan="2">領隊及工作人員</td><td colspan="3">${P('領隊工作人員')}</td><td class="lbl" colspan="2">督導分數(等級)</td><td colspan="2">${P('分數等級')}</td></tr>
+  <tr><td class="vlbl">優<br>點</td><td colspan="8">${L(R.good)}</td></tr>
+  <tr><td class="vlbl">缺<br>點</td><td colspan="8">${L(R.bad)}</td></tr>
+  <tr><td class="vlbl">規劃設計建議</td><td colspan="8">${L(R.plan)}</td></tr>
+  <tr><td class="vlbl">其他建議</td><td colspan="8">${L(R.other)}</td></tr>
+  <tr><td class="vlbl">檢驗拆驗</td><td colspan="8">${P('檢驗拆驗')}</td></tr></table>`;
+  renderChecks(F,R);
+}
+function renderChecks(F,R){
+  const out=[];
+  const missing=BASE_FIELDS.filter(([k])=>k!=='等級'&&!String(S.base[k]??'').trim()).map(([,l])=>l.replace(/（.*）/,''));
+  if(missing.length) out.push(['warn',`待補基本資料：${missing.join('、')}`]);
+  const bads=S.items.filter(i=>i.cat==='缺點');
+  const noCode=bads.filter(i=>!i.code).length; if(noCode) out.push(['err',`${noCode} 條缺點未填缺失代碼`]);
+  if(Object.keys(S.codes).length){ const unk=bads.filter(i=>i.code&&!S.codes[i.code]).map(i=>i.code); if(unk.length) out.push(['err',`缺失扣點表查無代碼：${[...new Set(unk)].join('、')}（可能為辨識錯誤）`]); }
+  const lg=bads.filter(i=>i.levelGuess).length; if(lg) out.push(['warn',`${lg} 條缺點的等級為推定（L），請確認`]);
+  R.notes.forEach(n=>out.push(['warn',n]));
+  S.files.filter(f=>f.titleOk===false).forEach(f=>out.push(['warn',`「${f.name}」內未見所選工程名稱，請確認是否為本案檔案`]));
+  S.files.filter(f=>f.kind==='needOcr'&&!f.text).forEach(f=>out.push(['warn',`「${f.name}」尚未辨識，內容需以 AI 辨識、Google 轉檔／OCR＋AI 判讀或手動輸入`]));
+  const totals=allTotals();
+  if(totals.length && !String(S.base['督導分數']||'').trim()){ const avg=Math.round(totals.reduce((a,b)=>a+b,0)/totals.length*10)/10; out.push(['warn',`委員總分平均 ${avg} 分（${totals.length} 位），督導分數尚未填寫`]); }
+  if(totals.length && S.base['督導分數']){ const avg=Math.round(totals.reduce((a,b)=>a+b,0)/totals.length); if(Math.abs(avg-Number(S.base['督導分數']))>=1) out.push(['warn',`委員評分表總分平均 ${avg} 分，與排程成績 ${S.base['督導分數']} 分不同，請確認`]); }
+  const p=parseFloat(S.base['預定進度']), a=parseFloat(S.base['實際進度']); if((p>100)||(a>100)) out.push(['err','進度超過 100%']);
+  if(!out.length) out.push(['ok','檢核通過，可產出']);
+  $('checks').innerHTML=out.map(([c,t])=>`<li class="${c}">${esc(t)}</li>`).join('');
+}
+
+/* =====================================================================
+ * 產出 ODT
+ * ===================================================================== */
+async function buildOdt(){
+  const zip=await JSZip.loadAsync(ODT_TEMPLATE_B64,{base64:true});
+  let xml=await zip.file('content.xml').async('string');
+  const F=recordFields(), R=buildRecord();
+  // 一般儲存格：同一樣式複製多段
+  for(const [k,lines] of Object.entries(F)){
+    xml=xml.replace(new RegExp(`(<text:p [^>]*>)\\{\\{${k}\\}\\}(</text:p>)`), (_,o,c)=>lines.map(l=>o+xmlEsc(l)+c).join(''));
+  }
+  // 清單儲存格：複製清單項目
+  const lists={'優點':R.good,'缺點':R.bad,'規劃設計建議':R.plan,'其他建議':R.other};
+  for(const [k,arr] of Object.entries(lists)){
+    const items=arr.length?arr:['無。'];
+    xml=xml.replace(new RegExp(`<text:list-item>(<text:p [^>]*>)\\{\\{L:${k}\\}\\}(</text:p>)</text:list-item>`), (_,o,c)=>items.map(t=>`<text:list-item>${o}${xmlEsc(t)}${c}</text:list-item>`).join(''));
+  }
+  if(/\{\{[^}]+\}\}/.test(xml)) console.warn('仍有未替換的佔位符', xml.match(/\{\{[^}]+\}\}/g));
+  zip.file('content.xml', xml);
+  zip.file('mimetype','application/vnd.oasis.opendocument.text',{compression:'STORE'});
+  return zip.generateAsync({type:'blob', mimeType:'application/vnd.oasis.opendocument.text', compression:'DEFLATE'});
+}
+function odtName(){ return `督導紀錄-${(S.base['標案名稱']||'未命名').replace(/[\\/:*?"<>|]/g,'_')}-${(S.base['督導日期']||'').replace(/\./g,'')}.odt`; }
+function ready(){ if(!S.sel){ toast('請先選擇案件'); return false; } return true; }
+$('btnOdt').onclick=async()=>{
+  if(!ready()) return;
+  const blob=await buildOdt(); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=odtName(); a.target='_self'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000); toast('已產出 '+odtName());
+};
+$('btnDrive').onclick=async()=>{
+  if(!ready()) return;
+  try{ toast('存檔中…'); const url=await gs('saveOdtToDrive', await blobToB64(await buildOdt()), odtName());
+    $('modalInner').innerHTML=`<div class="row" style="justify-content:space-between"><b>已存到雲端硬碟</b><button id="mClose">關閉</button></div><p><a href="${esc(url)}" target="_blank" rel="noopener">${esc(odtName())}</a></p>`;
+    $('modal').classList.add('show'); $('mClose').onclick=()=>$('modal').classList.remove('show');
+  }catch(e){ toast('存檔失敗：'+(e.message||e)); }
+};
+
+/* ---------- 儲存結果到資料庫（成績＋缺失，覆蓋該案原有結果） ---------- */
+$('btnSaveDb').onclick=async()=>{
+  if(!ready()) return;
+  if(S.role==='查詢者'){ toast('查詢者無法登錄結果'); return; }
+  const score=String(S.base['督導分數']||'').trim();
+  if(!score){ toast('請先在基本資料填寫督導分數'); return; }
+  const R=buildRecord();
+  const defects=R.badObjs.map(b=>({text:b.text, code:b.code, level:b.level, committee:b.committee||''}));
+  const noCode=defects.filter(d=>!d.code).length;
+  if(noCode && !confirm(`有 ${noCode} 條缺點沒有缺失代碼，統計時無法分類。仍要儲存嗎？`)) return;
+  try{
+    toast('儲存中…');
+    // 完整紀錄內容（基本資料＋全部意見）一併存檔，日後可查閱或重新產生
+    const content={ base:S.base, manualTotals:S.manualTotals||{},
+      items:S.items.filter(i=>String(i.text||'').trim()).map(i=>({committee:i.committee||'', sec:i.sec, cat:i.cat, text:i.text, code:i.code||'', level:i.level||''})) };
+    let r=await gs('saveResult', S.sel['案件編號'], score, defects, false, content);
+    if(r.needConfirm){
+      if(!confirm(`${S.sel['案件編號']} 已有結果（成績 ${r.oldScore||'無'}、缺失 ${r.existing} 筆）。\n要用這次的內容（成績 ${score}、缺失 ${defects.length} 筆）覆蓋嗎？`)) return;
+      toast('儲存中…');
+      r=await gs('saveResult', S.sel['案件編號'], score, defects, true, content);
+    }
+    S.sel['成績']=score; S.sel['缺失數']=String(r.defects||''); S.sel['缺失未建立']=!r.defects;
+    renderChips(); renderCases();
+    toast(`已儲存 ${S.sel['案件編號']}：成績 ${score}、缺失 ${r.defects} 筆`);
+    if(window.REC_onSaved) window.REC_onSaved(S.sel['案件編號']);
+  }catch(e){ toast('儲存失敗：'+(e.message||e)); }
+};
+
+/* ---------- 複製 ---------- */
+async function copyText(t,label){
+  window.__lastCopy=t;
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  toast(`已複製${label}（${t.split('\n').filter(Boolean).length} 條）`);
+}
+const numbered=arr=>arr.map((t,i)=>`${i+1}.${t}`).join('\n');
+$('btnCopyGood').onclick=()=>{ if(!ready()) return; const R=buildRecord(); copyText(numbered(R.good.length?R.good:['無。']),'優點'); };
+$('btnCopyBad').onclick=()=>{ if(!ready()) return; const R=buildRecord(); const noCode=$('copyNoCode').checked;
+  const arr=R.badObjs.map(b=> noCode||!b.code? b.text : `${b.text}${b.code}(${b.level})`); copyText(numbered(arr.length?arr:['無。']),'缺點'); };
+$('btnCopySugg').onclick=()=>{ if(!ready()) return; const R=buildRecord();
+  copyText(`規劃設計建議：\n${numbered(R.plan.length?R.plan:['無。'])}\n其他建議：\n${numbered(R.other.length?R.other:['無。'])}`,'建議'); };
+
+/* ---------- 啟動 ---------- */
+$('q').oninput=renderCases;
+$('xlsxInput').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ S.xlsxRows=await readXlsx(f); $('xlsxMsg').textContent=`已讀入 ${S.xlsxRows.length} 筆`; applyXlsx(); renderBase(); renderPreview(); }catch(err){ $('xlsxMsg').textContent='讀取失敗：'+err.message; } };
+function recStart(){ setupDrop(); renderBase(); renderItems(); renderPreview(); loadInit(); }
+/* 對外介面（併入主頁時由主頁呼叫） */
+window.REC = {
+  start: recStart,
+  open(id){ PRE_ID=id||''; preDone=false; if(S.cases.length){ const c=S.cases.find(x=>x['案件編號']===id); if(c){ preDone=true; selectCase(c._i); } } }
+};
+if(!window.REC_EMBED) recStart();
+
+})();
+</script>
+</section>
+</main>
+
+<!-- 案件對話框 -->
+<div class="mask hide ix" id="dlgMask">
+  <div class="dlg">
+    <header><h3 id="dlgTitle">新增行程</h3><span class="sp"></span><span id="dlgStatus"></span></header>
+    <div class="bd">
+      <div class="fg">
+        <label class="req">日期</label><input type="date" id="c日期">
+        <label class="req">項目</label><select id="c項目"></select>
+        <label class="req">單位</label><select id="c單位"></select>
+        <label>工作人員</label><input id="c工作人員" list="dlStaff">
+        <label class="req">工程名稱</label><div class="full"><input id="c工程名稱" list="dlTender" placeholder="輸入關鍵字，可從標案清單選取" style="width:100%"></div>
+        <label></label><div class="full info" id="tenderInfo">選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。</div>
+        <label>委員1</label><input id="c委員1" list="dlCom">
+        <label>委員2</label><input id="c委員2" list="dlCom">
+        <label>領隊</label><input id="c領隊" list="dlLeader">
+        <label>所屬計畫</label><input id="c所屬計畫">
+        <label>紀錄表期限</label><div><span class="calc" id="calcRec">—</span> <span class="cnt">（3 個工作天，督導免填）</span></div>
+        <label></label><div></div>
+        <label>報部改善期限</label><input type="date" id="c報部改善期限">
+        <label>本署改善期限</label><div><span class="calc" id="calcImp">—</span> <span class="cnt">（報部前 7 天）</span></div>
+        <label>改善完成</label><div><label><input type="checkbox" id="c改善完成"> 已完成</label></div>
+        <label>改善檔案連結</label><input id="c改善檔案" placeholder="https://drive.google.com/…">
+        <label>備註</label><div class="full"><textarea id="c備註" rows="2"></textarea></div>
+      </div>
+      <div id="dlgWarn" class="warnbox hide"></div>
+      <div id="dlgErr" class="errbox hide"></div>
+      <div id="cancelBox" class="warnbox hide">
+        <b>取消行程</b>（案件保留、編號不變，統計時自動排除）<br>
+        <textarea id="cancelReason" placeholder="請填寫取消原因（必填），例如：機關來函延期"></textarea>
+        <div class="row" style="margin-top:6px"><button class="b d" id="btnCancelGo">確定取消</button><button class="b" id="btnCancelBack">返回</button></div>
+      </div>
+      <div id="voidBox" class="errbox hide">
+        <b>作廢（登錄錯誤）</b>：用於打錯、重複登錄等「這筆行程根本不該存在」的情形。<br>
+        作廢後不列入任何統計、畫面上隱藏（只有管理者看得到），編號保留不再使用。真的取消行程請改用「取消行程」。<br>
+        <textarea id="voidReason" placeholder="請填寫作廢原因（必填），例如：與 115-0042 重複登錄"></textarea>
+        <div class="row" style="margin-top:6px"><button class="b d" id="btnVoidGo">確定作廢</button><button class="b" id="btnVoidBack">返回</button></div>
+      </div>
+      <details id="resBox" class="hide"><summary id="resSum">督導結果</summary><div class="log" id="resList" style="max-height:260px">讀取中…</div></details>
+      <details id="logBox" class="hide"><summary>異動紀錄</summary><div class="log" id="logList">讀取中…</div></details>
+    </div>
+    <footer>
+      <button class="b p" id="btnSave">儲存</button>
+      <button class="b p hide" id="btnForce">仍要儲存</button>
+      <button class="b d hide" id="btnCancel">取消行程…</button>
+      <button class="b hide" id="btnRecord">督導紀錄 →</button>
+      <button class="b d hide" id="btnVoid">作廢（登錄錯誤）…</button>
+      <button class="b hide" id="btnRestore">還原行程</button>
+      <span class="sp"></span>
+      <button class="b" id="btnClose">關閉</button>
+    </footer>
+  </div>
+</div>
+
+<datalist id="dlTender"></datalist><datalist id="dlCom"></datalist><datalist id="dlLeader"></datalist><datalist id="dlStaff"></datalist>
+<div id="toast"></div>
+<div id="loading"><div class="spin"></div><span id="loadingMsg">載入中…</span></div>
+
+<script>
+/* ===================== 狀態 ===================== */
+const APP_URL = (location.origin + location.pathname);
+const S = { me: null, year: null, years: [], cases: [], refs: null, view: (new URLSearchParams(location.search).get('page') === 'record' ? 'rec' : (new URLSearchParams(location.search).get('view') || '')) || 'list', tenders: null, month: null, editing: null, holidays: {} };
+const TYPE_COLOR = { '代部查核': 'var(--t1)', '本部查核': 'var(--t2)', '督導': 'var(--t3)', '中央查核': 'var(--t4)', '查核': 'var(--t5)' };
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const canEdit = () => S.me && (S.me.role === '管理者' || S.me.role === '承辦');
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const pad = n => ('0' + n).slice(-2);
+
+/* 呼叫後台（Promise 包裝） */
+function api(action, args) {
+  return new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(e => ng(e)).api(action, args || {}));
+}
+function loading(on, msg) { $('loading').classList.toggle('hide', !on); if (msg) $('loadingMsg').textContent = msg; }
+let toastT;
+function toast(msg, ms) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms || 2600); }
+function errMsg(e) { return String((e && e.message) || e).replace(/^Error:\s*/, ''); }
+
+/* ===================== 初始化 ===================== */
+/* 先顯示上次的暫存資料（瀏覽器本機），同時向後台讀最新資料，讀到後再更新畫面 */
+const LS_KEY = y => 'dk_idx_v2_' + (y || 'cur');
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function lsSet(k, d) {
+  try {   // 已作廢案件不存本機（只有管理者看得到）
+    localStorage.setItem(k, JSON.stringify(Object.assign({}, d, { cases: d.cases.filter(c => c.狀態 !== '已作廢') })));
+  } catch (e) { }
+}
+async function boot(year) {
+  const cachedD = lsGet(LS_KEY(year));
+  if (cachedD) { try { applyInit(cachedD, true); } catch (e) { } } else loading(true, '載入資料中…');
+  try {
+    const d = await api('init', year ? { year: year } : {});
+    lsSet(LS_KEY(year), d);
+    applyInit(d, false);
+    loadTenders();
+  } catch (e) {
+    if (cachedD) toast('無法讀取最新資料：' + errMsg(e), 5000);
+    else document.querySelector('main').innerHTML = '<div class="card errbox">' + esc(errMsg(e)) + '</div>';
+  } finally { loading(false); }
+}
+function applyInit(d, stale) {
+  {
+    S.me = d.me; S.year = String(d.year); S.years = d.years.map(String); S.cases = d.cases; S.refs = d.refs;
+    S.holidays = {}; d.refs.holidays.forEach(h => S.holidays[h] = 1);
+    // 年度選單：資料庫已有的年度＋目前選的年度＋明年（尚無案件也能先切過去登錄）
+    const nextY = String(+todayStr().slice(0, 4) - 1911 + 1);
+    [S.year, nextY].forEach(y => { if (S.years.indexOf(y) < 0) S.years.push(y); });
+    S.years.sort((a, b) => b - a);
+    $('me').innerHTML = esc(S.me.name || S.me.email) + ' <span class="badge">' + esc(S.me.role) + '</span>';
+    $('navAdmin').classList.toggle('hide', S.me.role !== '管理者');
+    $('optVoid').classList.toggle('hide', S.me.role !== '管理者');
+    $('btnNew').classList.toggle('hide', !canEdit() || S.view === 'rec' || S.view === 'stat');
+    $('syncInfo').textContent = (stale ? '（顯示暫存資料，更新中…）' : '') + (d.calEnabled ? ('上次同步：' + (d.lastSync || '—')) : '（日曆同步尚未啟用）');
+    // 對話框開著時不重建下拉選單，避免清掉正在輸入的內容
+    if ($('dlgMask').classList.contains('hide')) fillStatic();
+    else $('selYear').innerHTML = S.years.map(y => '<option value="' + y + '"' + (y === S.year ? ' selected' : '') + '>' + y + ' 年度</option>').join('');
+    if (!S.month) { const t = todayStr(); S.month = (String(+t.slice(0, 4) - 1911) === S.year ? t.slice(0, 7) : (+S.year + 1911) + '-01'); }
+    render();
+  }
+}
+
+function fillStatic() {
+  $('selYear').innerHTML = S.years.map(y => '<option value="' + y + '"' + (y === S.year ? ' selected' : '') + '>' + y + ' 年度</option>').join('');
+  const types = S.refs.types;
+  $('c項目').innerHTML = '<option value="">請選擇</option>' + types.map(t => '<option>' + t + '</option>').join('');
+  $('fType').innerHTML = '<option value="">全部項目</option>' + types.map(t => '<option>' + t + '</option>').join('');
+  // 單位依單位別分組
+  const groups = {};
+  S.refs.units.forEach(u => { (groups[u.kind || '其他'] = groups[u.kind || '其他'] || []).push(u.name); });
+  $('c單位').innerHTML = '<option value="">請選擇</option>' + Object.keys(groups).map(g =>
+    '<optgroup label="' + esc(g) + '">' + groups[g].map(n => '<option>' + esc(n) + '</option>').join('') + '</optgroup>').join('');
+  const unitsUsed = {}; S.cases.forEach(c => unitsUsed[c.單位] = 1);
+  $('fUnit').innerHTML = '<option value="">全部單位</option>' + Object.keys(unitsUsed).sort().map(u => '<option>' + esc(u) + '</option>').join('');
+  $('fMonth').innerHTML = '<option value="">全部月份</option>' + Array.from({ length: 12 }, (_, i) => '<option value="' + pad(i + 1) + '">' + (i + 1) + ' 月</option>').join('');
+  $('dlCom').innerHTML = S.refs.committees.map(n => '<option value="' + esc(n) + '">').join('');
+  $('dlLeader').innerHTML = S.refs.leaders.map(n => '<option value="' + esc(n) + '">').join('');
+  $('dlStaff').innerHTML = S.refs.staff.map(n => '<option value="' + esc(n) + '">').join('');
+  $('legend').innerHTML = types.map(t => '<span><i style="background:' + TYPE_COLOR[t] + '"></i>' + t + '</span>').join('') +
+    '<span><i style="background:#e6f4ea"></i>📝紀錄表期限件數</span><span><i style="background:#fdecea"></i>⚠️報部改善期限件數</span><span><i style="background:#fff6f5;border:1px solid #f3d0cc"></i>假日</span>';
+}
+
+/* ===================== 畫面切換 ===================== */
+$('nav').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  setView(b.dataset.v); render();
+});
+function setView(v) {
+  if (!$('v-' + v)) v = 'list';
+  S.view = v;
+  [...$('nav').querySelectorAll('button')].forEach(x => x.classList.toggle('on', x.dataset.v === v));
+  ['cal', 'list', 'due', 'admin', 'rec', 'stat'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
+  // 督導紀錄有自己的案件清單（不分年度），隱藏年度選單與新增鈕
+  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat');
+  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || !(S.me && canEdit()));
+  if (v === 'stat') setTimeout(loadStats, 0);
+  if (v === 'rec' && !S._recStarted) { S._recStarted = true; REC.start(); }
+}
+const CASE_ID = (new URLSearchParams(location.search).get('id') || '').replace(/[^0-9\-]/g, '');
+setView(S.view);
+if (S.view === 'rec' && CASE_ID) REC.open(CASE_ID);
+/* 督導紀錄頁儲存結果後，重新讀取行程資料（狀態、成績會更新） */
+window.REC_onSaved = () => { boot(S.year); };
+$('selYear').onchange = () => { S.month = null; boot($('selYear').value); };
+function render() {
+  if (S.view === 'cal') renderCal();
+  else if (S.view === 'list') renderList();
+  else if (S.view === 'due') renderDue();
+  else if (S.view === 'admin') renderAdmin();
+}
+
+/* ===================== 月曆 ===================== */
+function renderCal() {
+  const [y, m] = S.month.split('-').map(Number);
+  $('mTitle').textContent = (y - 1911) + ' 年 ' + m + ' 月';
+  const first = new Date(y, m - 1, 1), start = new Date(y, m - 1, 1 - first.getDay());
+  const showC = $('chkCancel').checked, showD = $('chkDue').checked;
+  const byDate = {}, rec = {}, imp = {};
+  S.cases.forEach(c => {
+    if (c.狀態 === '已作廢' || (c.狀態 === '已取消' && !showC)) return;
+    (byDate[c.日期] = byDate[c.日期] || []).push(c);
+    if (c.狀態 !== '已取消' && showD) {
+      if (c.紀錄表期限) { const k = c.紀錄表期限; (rec[k] = rec[k] || {}); rec[k][c.單位] = (rec[k][c.單位] || 0) + 1; }
+      if (c.報部改善期限 && c.改善完成 !== true) { const k = c.報部改善期限; (imp[k] = imp[k] || {}); imp[k][c.單位] = (imp[k][c.單位] || 0) + 1; }
+    }
+  });
+  const today = todayStr();
+  let h = '日一二三四五六'.split('').map(d => '<div class="dow">' + d + '</div>').join('');
+  // 只畫本月需要的週數（4～6 週）
+  const last = new Date(y, m, 0), weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
+  const MAXC = 3;   // 每格最多顯示幾件，其餘收合為「+N 件」
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const ds = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const cls = ['cell'];
+    if (d.getMonth() !== m - 1) cls.push('out');
+    if (S.holidays[ds] || d.getDay() === 0 || d.getDay() === 6) cls.push('hol');
+    if (ds === today) cls.push('today');
+    if (canEdit()) cls.push('can-add');
+    let inner = '<span class="dn">' + d.getDate() + '</span>';
+    const dayList = (byDate[ds] || []).sort((a, b) => a.單位.localeCompare(b.單位));
+    dayList.forEach((c, n) => {
+      inner += '<span class="chip' + (c.狀態 === '已取消' ? ' c' : '') + (n >= MAXC ? ' x' : '') + '" data-id="' + c.案件編號 + '" style="background:' + (TYPE_COLOR[c.項目] || '#888') + '" title="' +
+        esc(c.案件編號 + ' ' + c.項目 + '\n' + c.工程名稱 + '\n委員：' + [c.委員1, c.委員2].filter(x => x).join('、') + (c.領隊 ? '\n領隊：' + c.領隊 : '')) + '">' +
+        (c.狀態 === '待登錄結果' ? '⏳' : '') + esc(c.單位.replace(/管理處$/, '') + '｜' + c.工程名稱) + '</span>';
+    });
+    if (dayList.length > MAXC) inner += '<span class="more" data-more="1">+' + (dayList.length - MAXC) + ' 件</span>';
+    // 期限標記合併為一行小標籤，滑鼠移上去看單位
+    const tip = o => Object.keys(o).map(u => u.replace(/管理處$/, '') + ' ' + o[u] + ' 件').join('\n');
+    const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+    if (rec[ds]) inner += '<span class="mk r" title="紀錄表期限\n' + esc(tip(rec[ds])) + '">📝' + sum(rec[ds]) + '</span>';
+    if (imp[ds]) inner += '<span class="mk i" title="報部改善期限\n' + esc(tip(imp[ds])) + '">⚠️' + sum(imp[ds]) + '</span>';
+    h += '<div class="' + cls.join(' ') + '" data-date="' + ds + '">' + inner + '</div>';
+  }
+  $('grid').innerHTML = h;
+}
+$('grid').addEventListener('click', e => {
+  const more = e.target.closest('[data-more]');
+  if (more) { const cell = more.closest('.cell'); cell.classList.toggle('open'); more.textContent = cell.classList.contains('open') ? '收合' : '+' + cell.querySelectorAll('.chip.x').length + ' 件'; return; }
+  const chip = e.target.closest('.chip');
+  if (chip) return openCase(chip.dataset.id);
+  const cell = e.target.closest('.cell');
+  if (cell && canEdit() && !e.target.closest('.mk')) openCase(null, cell.dataset.date);
+});
+const moveMonth = n => { const [y, m] = S.month.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); S.month = d.getFullYear() + '-' + pad(d.getMonth() + 1); renderCal(); };
+$('mPrev').onclick = () => moveMonth(-1);
+$('mNext').onclick = () => moveMonth(1);
+$('mToday').onclick = () => { S.month = todayStr().slice(0, 7); renderCal(); };
+$('chkCancel').onchange = $('chkDue').onchange = renderCal;
+
+/* ===================== 清單 ===================== */
+function filtered() {
+  const mo = $('fMonth').value, ty = $('fType').value, un = $('fUnit').value, st = $('fStatus').value, k = $('fKey').value.trim().toLowerCase();
+  return S.cases.filter(c => (st === '已作廢' || c.狀態 !== '已作廢') && (!mo || c.日期.slice(5, 7) === mo) && (!ty || c.項目 === ty) && (!un || c.單位 === un) && (!st || c.狀態 === st) &&
+    (!k || [c.案件編號, c.工程名稱, c.委員1, c.委員2, c.領隊, c.工作人員, c.單位].join(' ').toLowerCase().indexOf(k) >= 0))
+    .sort(cmpCase);
+}
+/* ---- 排序 ----
+ * 點欄名排序，再點一次反向；日期類與案件編號第一次點為「新→舊」，其他欄第一次點為遞增（中文依筆畫）。
+ * 狀態依流程順序；空白一律排最後；同值再依日期新→舊、編號新→舊。排序選擇記在本機瀏覽器。
+ */
+const DESC_FIRST = ['案件編號', '日期', '紀錄表期限', '報部改善期限'];
+const ST_ORDER = ['已排定', '待登錄結果', '已登錄結果', '已取消', '已作廢'];
+S.sort = (() => { try { return JSON.parse(localStorage.getItem('dk_sort_list')) || null; } catch (e) { return null; } })() || { k: '日期', d: -1 };
+const coll = new Intl.Collator('zh-Hant-TW', { numeric: true });
+function sortVal(c, k) { return k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
+function cmpCase(a, b) {
+  const k = S.sort.k, d = S.sort.d, va = sortVal(a, k), vb = sortVal(b, k);
+  const ea = va === '' || va === -1, eb = vb === '' || vb === -1;
+  if (ea !== eb) return ea ? 1 : -1;
+  let r = 0;
+  if (!ea) r = typeof va === 'number' ? va - vb : coll.compare(String(va), String(vb));
+  if (r) return r * d;
+  return (b.日期 || '').localeCompare(a.日期 || '') || coll.compare(b.案件編號, a.案件編號);
+}
+document.querySelector('#v-list thead').addEventListener('click', e => {
+  const th = e.target.closest('th[data-k]'); if (!th) return;
+  const k = th.dataset.k;
+  S.sort = S.sort.k === k ? { k: k, d: -S.sort.d } : { k: k, d: DESC_FIRST.indexOf(k) >= 0 ? -1 : 1 };
+  try { localStorage.setItem('dk_sort_list', JSON.stringify(S.sort)); } catch (e) { }
+  renderList();
+});
+function renderList() {
+  const list = filtered();
+  document.querySelectorAll('#v-list th[data-k]').forEach(th => {
+    const on = th.dataset.k === S.sort.k;
+    th.classList.toggle('sorted', on);
+    th.innerHTML = th.dataset.k + (on ? '<span class="ar">' + (S.sort.d < 0 ? '▼' : '▲') + '</span>' : '');
+    th.title = '點選排序' + (on ? '（目前' + (S.sort.d < 0 ? '遞減' : '遞增') + '，再點反向）' : '');
+  });
+  $('listCnt').textContent = '共 ' + list.length + ' 筆';
+  $('listBody').innerHTML = list.map(c => '<tr data-id="' + c.案件編號 + '"' + (c.狀態 === '已取消' || c.狀態 === '已作廢' ? ' class="cx"' : '') + '>' +
+    '<td>' + c.案件編號 + '</td><td>' + c.日期 + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
+    '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td><td>' + esc(c.工作人員) + '</td>' +
+    '<td><span class="st ' + c.狀態 + '">' + c.狀態 + '</span></td><td>' + (c.紀錄表期限 || '') + '</td><td>' + (c.報部改善期限 || '') + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
+    '<tr><td colspan="11" class="cnt">沒有符合條件的案件</td></tr>';
+}
+['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
+$('fKey').oninput = renderList;
+$('listBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id); });
+$('btnCsv').onclick = () => {
+  const cols = ['案件編號', '日期', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數'];
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = '﻿' + [cols.map(q).join(',')].concat(filtered().map(c => cols.map(k => q(c[k] === true ? '是' : c[k])).join(','))).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = S.year + '年度行程清單.csv'; a.target = '_self';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+/* ===================== 統計 ===================== */
+// 案件欄位索引：[編號, 年度, 月, 項目, 單位, 單位別, 狀態, 成績, 缺失數, 委員1, 委員2]
+const SI = { id: 0, y: 1, m: 2, type: 3, unit: 4, kind: 5, st: 6, score: 7, def: 8, c1: 9, c2: 10 };
+const SEC_NAME = { A1: '主辦機關／PCM（4.01）', A2: '監造單位（4.02）', B: '承攬廠商（4.03）', W1: '施工品質（5.01–5.09）', W2: '材料設備（5.10–5.13）', W3: '施工安全衛生（5.14–5.17）', P: '施工進度（6.xx）', D: '規劃設計（7.xx）', O: '其他／未填代碼' };
+function secOf(code) {
+  const m = String(code || '').match(/^(\d)\.(\d{2})/); if (!m) return 'O';
+  const a = +m[1], b = +m[2];
+  if (a === 4) return b === 1 ? 'A1' : b === 2 ? 'A2' : b === 3 ? 'B' : 'O';
+  if (a === 5) return b <= 9 ? 'W1' : b <= 13 ? 'W2' : b <= 17 ? 'W3' : 'O';
+  return a === 6 ? 'P' : a === 7 ? 'D' : 'O';
+}
+const kindOf = u => /管理處$/.test(u) ? '管理處' : '縣市政府';
+const fmt = (n, d) => n == null || isNaN(n) ? '—' : (d ? n.toFixed(d) : String(n));
+const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
+function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
+async function loadStats() {
+  if (!S.stat) {
+    try { S.stat = JSON.parse(localStorage.getItem('dk_stat_v1') || 'null'); } catch (e) { }
+    if (S.stat) initStatFilters();
+  }
+  if (S._statFresh) return renderStats();
+  try {
+    const d = await api('stats', {});
+    S.stat = d; S._statFresh = true;
+    try { localStorage.setItem('dk_stat_v1', JSON.stringify(Object.assign({}, d, { cases: d.cases.map(c => c.slice(0, 9).concat(['', ''])) }))); } catch (e) { }   // 本機暫存不含委員
+    initStatFilters();
+  } catch (e) { $('stInfo').textContent = '讀取失敗：' + errMsg(e); }
+}
+function initStatFilters() {
+  const ys = [...new Set(S.stat.cases.map(c => c[SI.y]))].filter(Boolean).sort((a, b) => b - a);
+  const cur = S.statYears || [ys[0]];
+  S.statYears = cur;
+  $('stYears').innerHTML = ys.map(y => '<label><input type="checkbox" value="' + y + '"' + (cur.indexOf(y) >= 0 ? ' checked' : '') + '> ' + y + '</label>').join('');
+  if ($('stType').options.length <= 1) $('stType').innerHTML = '<option value="">全部項目</option>' + (S.refs ? S.refs.types : []).map(t => '<option>' + t + '</option>').join('');
+  $('stComBox').classList.toggle('hide', !!S.stat.committeeHidden);
+  renderStats();
+}
+$('stYears').addEventListener('change', () => { S.statYears = [...$('stYears').querySelectorAll('input:checked')].map(i => +i.value); renderStats(); });
+$('stType').onchange = $('stKind').onchange = () => renderStats();
+function statFilter() {
+  const ys = S.statYears || [], ty = $('stType').value, kd = $('stKind').value;
+  return { ys, ty, kd, ok: (y, t, u) => ys.indexOf(+y) >= 0 && (!ty || t === ty) && (!kd || kindOf(u) === kd) };
+}
+function tiles(id, arr) { $(id).innerHTML = arr.map(([l, v]) => '<div class="tile"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join(''); }
+function bars(id, idx, labels, vals, unit) {
+  const mx = Math.max(1, ...vals);
+  $(id).innerHTML = vals.map((v, i) => '<div class="b" title="' + labels[i] + '：' + v + ' ' + unit + '"><span>' + (v || '') + '</span><i style="height:' + (v / mx * 100) + '%"></i></div>').join('');
+  $(idx).innerHTML = labels.map(l => '<div>' + l + '</div>').join('');
+}
+function table(id, head, rows, opt) {
+  opt = opt || {};
+  const num = opt.num || [];
+  $(id).innerHTML = '<thead><tr>' + head.map((h, i) => '<th' + (num.indexOf(i) >= 0 ? ' class="n"' : '') + (opt.sort ? ' data-i="' + i + '" style="cursor:pointer"' : '') + '>' + h + '</th>').join('') + '</tr></thead><tbody>' +
+    (rows.length ? rows.map(r => '<tr' + (r._attr || '') + '>' + r.map((v, i) => '<td' + (num.indexOf(i) >= 0 ? ' class="n"' : '') + '>' + (v == null ? '' : v) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="' + head.length + '" class="cnt">沒有資料</td></tr>') + '</tbody>';
+  $(id)._data = { head, rows, opt };
+}
+/* 統計表點欄名排序（數字欄由大到小、文字欄依筆畫） */
+document.querySelector('#v-stat').addEventListener('click', e => {
+  const th = e.target.closest('th[data-i]'); if (!th) return;
+  const t = th.closest('table'), D = t._data, i = +th.dataset.i;
+  const dir = D.opt._si === i ? -D.opt._sd : (D.opt.num.indexOf(i) >= 0 ? -1 : 1);
+  D.opt._si = i; D.opt._sd = dir;
+  const val = v => { const n = parseFloat(String(v).replace(/<[^>]*>/g, '').replace(/[,%]/g, '')); return isNaN(n) ? null : n; };
+  D.rows.sort((a, b) => {
+    if (D.opt.num.indexOf(i) >= 0) { const x = val(a[i]), y = val(b[i]); if (x == null) return 1; if (y == null) return -1; return (x - y) * dir; }
+    return coll.compare(String(a[i]), String(b[i])) * dir;
+  });
+  table(t.id, D.head, D.rows, D.opt);
+});
+function renderStats() {
+  if (!S.stat) return;
+  const F = statFilter();
+  const all = S.stat.cases.filter(c => F.ok(c[SI.y], c[SI.type], c[SI.unit]));
+  const live = all.filter(c => c[SI.st] !== '已取消');
+  const done = live.filter(c => c[SI.st] === '待登錄結果' || c[SI.st] === '已登錄結果');
+  const res = live.filter(c => c[SI.st] === '已登錄結果');
+  const scored = live.filter(c => c[SI.score] !== '');
+  $('stInfo').textContent = '資料時間：' + (S.stat.loadedAt || '') + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + F.ys.join('、') + ' 年度';
+  // 1. 執行概況
+  tiles('stTiles1', [['排定件數（不含取消）', live.length], ['已辦理', done.length], ['已登錄結果', res.length], ['待登錄結果', done.length - res.length], ['已取消', all.length - live.length]]);
+  const types = [...new Set(all.map(c => c[SI.type]))];
+  table('tbType', ['項目', '排定', '已辦理', '已登錄結果', '待登錄結果', '已取消'], types.map(t => {
+    const a = all.filter(c => c[SI.type] === t), l = a.filter(c => c[SI.st] !== '已取消');
+    const d = l.filter(c => c[SI.st] !== '已排定'), r = l.filter(c => c[SI.st] === '已登錄結果');
+    return [t, l.length, d.length, r.length, d.length - r.length, a.length - l.length];
+  }), { num: [1, 2, 3, 4, 5] });
+  const mon = Array.from({ length: 12 }, (_, i) => live.filter(c => c[SI.m] === i + 1).length);
+  bars('stMonth', 'stMonthX', Array.from({ length: 12 }, (_, i) => (i + 1) + '月'), mon, '件');
+  if (F.ys.length > 1) {
+    $('stYearBox').innerHTML = '<div class="cnt" style="margin:12px 0 4px">年度比較</div><table class="st" id="tbYear"></table>';
+    table('tbYear', ['年度', '排定', '已登錄結果', '平均成績', '甲等比例', '平均缺失數'], F.ys.slice().sort().map(y => {
+      const l = live.filter(c => c[SI.y] === y), sc = l.filter(c => c[SI.score] !== '').map(c => c[SI.score]), dd = l.filter(c => c[SI.def] > 0);
+      return [y, l.length, l.filter(c => c[SI.st] === '已登錄結果').length, fmt(avg(sc), 1), pct(sc.filter(x => x >= 80).length, sc.length), fmt(avg(dd.map(c => c[SI.def])), 1)];
+    }), { num: [1, 2, 3, 4, 5] });
+  } else $('stYearBox').innerHTML = '';
+  // 2. 成績與等第
+  const sc = scored.map(c => c[SI.score]);
+  tiles('stTiles2', [['有成績件數', sc.length], ['平均成績', fmt(avg(sc), 1)], ['中位數', fmt(median(sc), 1)], ['最高', sc.length ? Math.max(...sc) : '—'], ['最低', sc.length ? Math.min(...sc) : '—'], ['90 分以上', sc.filter(x => x >= 90).length]]);
+  const g = [['甲（80 以上）', sc.filter(x => x >= 80).length], ['乙（70–79）', sc.filter(x => x >= 70 && x < 80).length], ['丙（未滿 70）', sc.filter(x => x < 70).length]];
+  table('tbGrade', ['等第', '件數', '比例'], g.map(([k, n]) => [k, n, pct(n, sc.length)]).concat([['無成績（已辦理）', done.filter(c => c[SI.score] === '').length, '']]), { num: [1, 2] });
+  const bins = []; for (let b = 60; b <= 95; b += 5) bins.push(b);
+  bars('stHist', 'stHistX', ['<60'].concat(bins.map(b => b === 95 ? '95+' : String(b))), [sc.filter(x => x < 60).length].concat(bins.map(b => sc.filter(x => x >= b && (b === 95 || x < b + 5)).length)), '件');
+  // 3. 各單位
+  const units = [...new Set(live.map(c => c[SI.unit]))];
+  table('tbUnit', ['單位', '單位別', '排定', '有成績', '平均成績', '最高', '最低', '乙等', '丙等', '平均缺失數', '缺失未建立'], units.map(u => {
+    const l = live.filter(c => c[SI.unit] === u), s2 = l.filter(c => c[SI.score] !== '').map(c => c[SI.score]), dd = l.filter(c => c[SI.def] > 0);
+    const nodef = l.filter(c => c[SI.st] !== '已排定' && !c[SI.def]).length;
+    return [u, kindOf(u), l.length, s2.length, fmt(avg(s2), 1), s2.length ? Math.max(...s2) : '—', s2.length ? Math.min(...s2) : '—',
+      s2.filter(x => x >= 70 && x < 80).length, s2.filter(x => x < 70).length, fmt(avg(dd.map(c => c[SI.def])), 1), nodef];
+  }).sort((a, b) => (parseFloat(b[4]) || 0) - (parseFloat(a[4]) || 0)), { num: [2, 3, 4, 5, 6, 7, 8, 9, 10], sort: true });
+  // 4. 缺失分析
+  const D = S.stat.defects.filter(d => F.ok(d[0], d[1], d[2]));
+  const tot = D.reduce((a, d) => a + d[5], 0);
+  const withDef = live.filter(c => c[SI.def] > 0).length;
+  tiles('stTiles4', [['缺失總筆數', tot], ['已建立缺失案件', withDef], ['平均每案缺失', fmt(withDef ? tot / withDef : NaN, 1)], ['扣點合計', D.reduce((a, d) => a + d[6], 0)]]);
+  const bySec = {}; D.forEach(d => { const k = secOf(d[3]); bySec[k] = (bySec[k] || 0) + d[5]; });
+  table('tbSec', ['段落', '筆數', '比例'], Object.keys(SEC_NAME).filter(k => bySec[k]).map(k => [SEC_NAME[k], bySec[k], '<span class="hbar" style="width:' + (bySec[k] / tot * 120) + 'px"></span>' + pct(bySec[k], tot)]), { num: [1] });
+  const byLv = {}; D.forEach(d => { const k = d[4] || '未填'; byLv[k] = (byLv[k] || 0) + d[5]; });
+  table('tbLevel', ['等級', '筆數', '比例'], ['L', 'M', 'S', '未填'].filter(k => byLv[k]).map(k => [{ L: 'L（輕）', M: 'M（中）', S: 'S（重）', 未填: '未填' }[k], byLv[k], pct(byLv[k], tot)]), { num: [1, 2] });
+  const byCode = {}; D.forEach(d => { if (!d[3]) return; const o = byCode[d[3]] = byCode[d[3]] || { n: 0, L: 0, M: 0, S: 0 }; o.n += d[5]; if (o[d[4]] != null) o[d[4]] += d[5]; });
+  const top = Object.keys(byCode).sort((a, b) => byCode[b].n - byCode[a].n).slice(0, 20);
+  table('tbCode', ['名次', '代碼', '內容', '段落', '筆數', '比例', 'L', 'M', 'S'], top.map((k, i) => {
+    const r = [i + 1, k, esc(String(S.stat.codes[k] || '').replace(/□/g, '').slice(0, 60)), (SEC_NAME[secOf(k)] || '').replace(/（.*）/, ''), byCode[k].n, pct(byCode[k].n, tot), byCode[k].L, byCode[k].M, byCode[k].S];
+    r._attr = ' class="click" data-code="' + k + '"'; return r;
+  }), { num: [0, 4, 5, 6, 7, 8] });
+  // 5. 委員
+  if (!$('stComBox').classList.contains('hide')) {
+    const com = {};
+    done.forEach(c => [c[SI.c1], c[SI.c2]].filter(Boolean).forEach(n => { const o = com[n] = com[n] || { n: 0, sc: [], df: [] }; o.n++; if (c[SI.score] !== '') o.sc.push(c[SI.score]); if (c[SI.def] > 0) o.df.push(c[SI.def]); }));
+    table('tbCom', ['委員', '出席件數', '有成績', '平均成績', '最高', '最低', '平均缺失數'], Object.keys(com).map(n => {
+      const o = com[n]; return [esc(n), o.n, o.sc.length, fmt(avg(o.sc), 1), o.sc.length ? Math.max(...o.sc) : '—', o.sc.length ? Math.min(...o.sc) : '—', fmt(avg(o.df), 1)];
+    }).sort((a, b) => b[1] - a[1]), { num: [1, 2, 3, 4, 5, 6], sort: true });
+  }
+}
+/* 點缺失代碼 → 實際案例 */
+$('tbCode').addEventListener('click', async e => {
+  const tr = e.target.closest('tr[data-code]'); if (!tr) return;
+  const code = tr.dataset.code, F = statFilter();
+  $('stMTitle').textContent = code + '　' + String(S.stat.codes[code] || '').replace(/□/g, '').slice(0, 40);
+  $('stMTable').innerHTML = '<tr><td class="cnt">讀取中…</td></tr>'; $('stMask').classList.remove('hide');
+  try {
+    const list = await api('statsCode', { code: code, years: F.ys, type: F.ty, kind: F.kd });
+    table('stMTable', ['案件編號', '日期', '單位', '工程名稱', '缺失紀錄'], list.map(r => [r.案件編號, r.日期, esc(r.單位), esc(r.工程名稱), esc(r.缺失紀錄)]));
+  } catch (err) { $('stMTable').innerHTML = '<tr><td class="cnt">讀取失敗：' + esc(errMsg(err)) + '</td></tr>'; }
+});
+$('stMClose').onclick = () => $('stMask').classList.add('hide');
+$('stMask').addEventListener('mousedown', e => { if (e.target === $('stMask')) $('stMask').classList.add('hide'); });
+/* 下載 CSV（統計表） */
+$('v-stat').addEventListener('click', e => {
+  const b = e.target.closest('[data-csv]'); if (!b) return;
+  const t = $(b.dataset.csv); if (!t || !t._data) return;
+  const strip = v => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+  const q = v => '"' + strip(v).replace(/"/g, '""') + '"';
+  const csv = '﻿' + [t._data.head.map(q).join(',')].concat(t._data.rows.map(r => r.map(q).join(','))).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = '統計_' + b.closest('.card').querySelector('h3').firstChild.textContent.trim() + '_' + (S.statYears || []).join('-') + '.csv'; a.target = '_self';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* ===================== 期限提醒 ===================== */
+function daysFrom(ds) { const t = new Date(todayStr()), d = new Date(ds); return Math.round((d - t) / 86400000); }
+function renderDue() {
+  const live = S.cases.filter(c => c.狀態 !== '已取消' && c.狀態 !== '已作廢');
+  const rec = live.filter(c => c.紀錄表期限 && daysFrom(c.紀錄表期限) >= -3 && daysFrom(c.紀錄表期限) <= 14).sort((a, b) => a.紀錄表期限 < b.紀錄表期限 ? -1 : 1);
+  const imp = live.filter(c => c.報部改善期限 && c.改善完成 !== true).sort((a, b) => a.報部改善期限 < b.報部改善期限 ? -1 : 1);
+  const item = (c, ds) => {
+    const n = daysFrom(ds), cls = n < 0 ? 'late' : n <= 3 ? 'soon' : '';
+    return '<div class="it" data-id="' + c.案件編號 + '"><span class="d ' + cls + '">' + ds + '（' + (n < 0 ? '逾期 ' + (-n) + ' 天' : n === 0 ? '今天' : '剩 ' + n + ' 天') + '）</span> ' +
+      esc(c.單位) + '<br><span class="cnt">' + c.案件編號 + '｜' + esc(c.項目) + '｜' + esc(c.工程名稱) + '（' + c.日期 + '）</span></div>';
+  };
+  $('dueRec').innerHTML = rec.map(c => item(c, c.紀錄表期限)).join('') || '<p class="cnt">近期沒有紀錄表期限</p>';
+  $('dueImp').innerHTML = imp.map(c => item(c, c.報部改善期限)).join('') || '<p class="cnt">沒有未完成的改善期限</p>';
+  const pend = live.filter(c => c.狀態 === '待登錄結果').sort((a, b) => a.日期 < b.日期 ? -1 : 1);
+  $('duePend').innerHTML = pend.map(c => '<div class="it" data-id="' + c.案件編號 + '"><span class="d">' + c.日期 + '</span> ' + esc(c.單位) +
+    '<br><span class="cnt">' + c.案件編號 + '｜' + esc(c.項目) + '｜' + esc(c.工程名稱) + '</span></div>').join('') || '<p class="cnt">沒有待登錄結果的案件</p>';
+}
+$('v-due').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) openCase(it.dataset.id); });
+
+/* ===================== 案件對話框 ===================== */
+const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '改善檔案', '備註'];
+function openCase(id, date) {
+  const c = id ? S.cases.find(x => x.案件編號 === id) : null;
+  S.editing = c;
+  const ro = !canEdit();
+  $('dlgTitle').textContent = c ? c.案件編號 + '　' + c.工程名稱 : '新增行程';
+  $('dlgStatus').innerHTML = c ? '<span class="st ' + c.狀態 + '">' + c.狀態 + '</span>' + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
+  FIELDS.forEach(f => { $('c' + f).value = c ? (c[f] || '') : ''; $('c' + f).disabled = ro; });
+  $('c改善完成').checked = !!(c && c.改善完成 === true); $('c改善完成').disabled = ro;
+  if (!c && date) $('c日期').value = date;
+  ['dlgWarn', 'dlgErr', 'cancelBox', 'voidBox', 'btnForce'].forEach(x => $(x).classList.add('hide'));
+  const off = !!(c && (c.狀態 === '已取消' || c.狀態 === '已作廢'));
+  $('btnSave').classList.toggle('hide', ro || off);
+  $('btnCancel').classList.toggle('hide', ro || !c || !(c.狀態 === '已排定' || c.狀態 === '待登錄結果'));
+  $('btnVoid').classList.toggle('hide', ro || !c || !(c.狀態 === '已排定' || c.狀態 === '待登錄結果' || c.狀態 === '已取消'));
+  $('btnRestore').classList.toggle('hide', ro || !c || !(c.狀態 === '已取消' || (c.狀態 === '已作廢' && S.me.role === '管理者')));
+  $('btnRecord').classList.toggle('hide', !c || c.狀態 === '已取消' || c.狀態 === '已作廢');
+  $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
+  const hasRes = !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
+  $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
+  if (hasRes) $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）';
+  updateTenderList(); showTenderInfo(); calcDue();
+  $('dlgMask').classList.remove('hide');
+  if (!c) setTimeout(() => $('c日期').focus(), 50);
+}
+function closeDlg() { $('dlgMask').classList.add('hide'); S.editing = null; }
+$('btnClose').onclick = closeDlg;
+$('dlgMask').addEventListener('mousedown', e => { if (e.target === $('dlgMask')) closeDlg(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('dlgMask').classList.contains('hide')) closeDlg(); });
+
+/* 標案清單：首頁顯示後才在背景讀取（先用本機暫存） */
+async function loadTenders() {
+  if (S.tenders && S._tendersFresh) return;
+  if (!S.tenders) { try { S.tenders = JSON.parse(localStorage.getItem('dk_tenders_v1') || 'null'); } catch (e) { } }
+  try {
+    const t = await api('tenders', {});
+    S.tenders = t; S._tendersFresh = true;
+    try { localStorage.setItem('dk_tenders_v1', JSON.stringify(t)); } catch (e) { }
+    if (!$('dlgMask').classList.contains('hide')) { updateTenderList(); showTenderInfo(); }
+  } catch (e) { }
+}
+/* 標案清單：依所選單位縮小候選 */
+function updateTenderList() {
+  const u = $('c單位').value.replace(/管理處$/, '');
+  let list = S.tenders || [];
+  if (u) { const f = list.filter(t => t.機關.indexOf(u) >= 0); if (f.length) list = f; }
+  $('dlTender').innerHTML = list.slice(0, 1500).map(t => '<option value="' + esc(t.名稱) + '">' + esc(t.編號 + '｜' + t.縣市) + '</option>').join('');
+}
+function showTenderInfo() {
+  const n = $('c工程名稱').value.trim();
+  const t = n && (S.tenders || []).find(x => x.名稱 === n);
+  $('tenderInfo').innerHTML = t ? '✔ 標案清單：' + esc(t.編號) + '｜' + esc(t.機關) + '｜' + esc(t.縣市) + (t.計畫 && t.計畫 !== '無' ? '｜' + esc(t.計畫) : '')
+    : n ? '<span class="soon">標案清單中找不到此名稱，仍可儲存（基本資料需日後補登）</span>' : '選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。';
+  if (t && !$('c所屬計畫').value && t.計畫 && t.計畫 !== '無') $('c所屬計畫').value = t.計畫;
+}
+$('c單位').onchange = updateTenderList;
+$('c工程名稱').onchange = showTenderInfo;
+/* 期限試算（與後台規則相同） */
+function addWorkdays(ds, n) {
+  const d = new Date(ds + 'T00:00:00'); let k = 0;
+  while (k < n) { d.setDate(d.getDate() + 1); const s = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); if (d.getDay() > 0 && d.getDay() < 6 && !S.holidays[s]) k++; }
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function calcDue() {
+  const d = $('c日期').value, t = $('c項目').value, p = $('c報部改善期限').value;
+  $('calcRec').textContent = d && t && t !== '督導' ? addWorkdays(d, 3) : '—';
+  if (p) { const x = new Date(p + 'T00:00:00'); x.setDate(x.getDate() - 7); $('calcImp').textContent = x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); }
+  else $('calcImp').textContent = '—';
+}
+['c日期', 'c項目', 'c報部改善期限'].forEach(id => $(id).addEventListener('change', calcDue));
+
+function formData() {
+  const o = {};
+  FIELDS.forEach(f => o[f] = $('c' + f).value.trim());
+  o.改善完成 = $('c改善完成').checked;
+  if (S.editing) { o.案件編號 = S.editing.案件編號; o._ver = S.editing.修改時間; }
+  return o;
+}
+async function save(force) {
+  const o = formData();
+  const miss = [];
+  if (!o.日期) miss.push('日期'); if (!o.項目) miss.push('項目'); if (!o.單位) miss.push('單位'); if (!o.工程名稱) miss.push('工程名稱');
+  if (miss.length) return showErr('請填寫：' + miss.join('、'));
+  $('btnSave').disabled = $('btnForce').disabled = true;
+  loading(true, '儲存中…');
+  try {
+    const r = await api('saveCase', { case: o, force: !!force });
+    if (r.needConfirm) {
+      $('dlgWarn').innerHTML = '<b>請確認以下情形：</b><br>' + r.warnings.map(esc).join('<br>');
+      $('dlgWarn').classList.remove('hide'); $('btnForce').classList.remove('hide'); $('dlgErr').classList.add('hide');
+      return;
+    }
+    const msg = (S.editing ? '已更新 ' : '已新增 ') + r.case.案件編號;
+    const cy = String(+r.case.年度);
+    closeDlg();
+    if (cy !== S.year) {
+      // 存到別的年度：自動切換到該年度並跳到該月份，畫面立即看得到
+      S.month = String(r.case.日期 || '').slice(0, 7) || null;
+      await boot(cy);
+      toast(msg + '（已切換到 ' + cy + ' 年度）', 3500);
+    } else { upsert(r.case); toast(msg); render(); }
+  } catch (e) { showErr(errMsg(e)); }
+  finally { loading(false); $('btnSave').disabled = $('btnForce').disabled = false; }
+}
+function showErr(m) { $('dlgErr').textContent = m; $('dlgErr').classList.remove('hide'); }
+function upsert(c) {
+  const i = S.cases.findIndex(x => x.案件編號 === c.案件編號);
+  if (String(+c.年度) !== S.year) { if (i >= 0) S.cases.splice(i, 1); return; }
+  if (i >= 0) S.cases[i] = c; else S.cases.push(c);
+}
+$('btnSave').onclick = () => save(false);
+$('btnForce').onclick = () => save(true);
+$('btnCancel').onclick = () => { $('cancelBox').classList.remove('hide'); $('cancelReason').value = ''; $('cancelReason').focus(); };
+$('btnCancelBack').onclick = () => $('cancelBox').classList.add('hide');
+$('btnCancelGo').onclick = async () => {
+  const reason = $('cancelReason').value.trim();
+  if (!reason) return showErr('請填寫取消原因');
+  loading(true, '取消中…');
+  try { const r = await api('cancelCase', { id: S.editing.案件編號, reason: reason }); upsert(r.case); toast('已取消 ' + r.case.案件編號); closeDlg(); render(); }
+  catch (e) { showErr(errMsg(e)); } finally { loading(false); }
+};
+$('btnRecord').onclick = () => { if (!S.editing) return; const id = S.editing.案件編號; closeDlg(); setView('rec'); REC.open(id); window.scrollTo(0, 0); };
+$('btnVoid').onclick = () => { $('cancelBox').classList.add('hide'); $('voidBox').classList.remove('hide'); $('voidReason').value = ''; $('voidReason').focus(); };
+$('btnVoidBack').onclick = () => $('voidBox').classList.add('hide');
+$('btnVoidGo').onclick = async () => {
+  const reason = $('voidReason').value.trim();
+  if (!reason) return showErr('請填寫作廢原因');
+  loading(true, '作廢中…');
+  try {
+    const r = await api('voidCase', { id: S.editing.案件編號, reason: reason });
+    if (S.me.role === '管理者') upsert(r.case); else S.cases = S.cases.filter(x => x.案件編號 !== r.case.案件編號);
+    toast('已作廢 ' + r.case.案件編號); closeDlg(); render();
+  } catch (e) { showErr(errMsg(e)); } finally { loading(false); }
+};
+$('btnRestore').onclick = async () => {
+  loading(true, '還原中…');
+  try { const r = await api('restoreCase', { id: S.editing.案件編號 }); upsert(r.case); toast('已還原 ' + r.case.案件編號); closeDlg(); render(); }
+  catch (e) { showErr(errMsg(e)); } finally { loading(false); }
+};
+/* 督導結果：成績、缺失清單；完整紀錄可到「督導紀錄」分頁查閱、下載 */
+$('resBox').addEventListener('toggle', async () => {
+  if (!$('resBox').open || !S.editing) return;
+  const id = S.editing.案件編號;
+  try {
+    const r = await api('djRecord', { id: id });
+    if (!S.editing || S.editing.案件編號 !== id) return;
+    const lv = { L: '輕', M: '中', S: '重' };
+    $('resList').innerHTML =
+      '<div>成績：<b>' + esc(r.成績 || '—') + '</b>　' + (r.content ? '完整督導紀錄：已儲存（' + esc(r.savedAt) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）') + '</div>' +
+      (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
+      '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>';
+  } catch (e) { $('resList').textContent = '讀取失敗：' + errMsg(e); }
+});
+$('logBox').addEventListener('toggle', async () => {
+  if (!$('logBox').open || !S.editing) return;
+  try {
+    const list = await api('caseLog', { id: S.editing.案件編號 });
+    $('logList').innerHTML = list.map(l => {
+      let body = l.內容;
+      try { const o = JSON.parse(l.內容); body = Object.keys(o).map(k => Array.isArray(o[k]) ? k + '：' + (o[k][0] === '' ? '（空）' : o[k][0]) + ' → ' + (o[k][1] === '' ? '（空）' : o[k][1]) : k + '：' + o[k]).join('；'); } catch (e) { }
+      return '<div><b>' + esc(l.時間) + '</b> ' + esc(l.使用者) + ' ' + esc(l.動作) + '<br>' + esc(body) + '</div>';
+    }).join('') || '（無紀錄，可能為搬遷之歷史資料）';
+  } catch (e) { $('logList').textContent = errMsg(e); }
+});
+
+/* ===================== 新增按鈕 ===================== */
+$('btnNew').onclick = () => openCase(null, S.view === 'cal' ? null : null);
+
+/* ===================== 管理 ===================== */
+let adminLoaded = false;
+async function renderAdmin() {
+  if (adminLoaded) return; adminLoaded = true;
+  try { drawUsers(await api('listUsers')); } catch (e) { toast(errMsg(e)); }
+}
+function drawUsers(list) {
+  $('userBody').innerHTML = list.map(u => '<tr data-u="' + esc(JSON.stringify(u)) + '"><td>' + esc(u.Email) + '</td><td>' + esc(u.姓名) + '</td><td>' + esc(u.角色) + '</td><td>' + (u.啟用 === true || u.啟用 === 'true' ? '✔' : '—') + '</td></tr>').join('');
+}
+$('userBody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-u]'); if (!tr) return;
+  const u = JSON.parse(tr.dataset.u);
+  $('uEmail').value = u.Email; $('uName').value = u.姓名; $('uRole').value = u.角色; $('uOn').checked = u.啟用 === true || u.啟用 === 'true';
+});
+$('btnUser').onclick = async () => {
+  loading(true, '儲存中…');
+  try { drawUsers(await api('saveUser', { user: { Email: $('uEmail').value, 姓名: $('uName').value, 角色: $('uRole').value, 啟用: $('uOn').checked } })); toast('已儲存使用者'); $('uEmail').value = $('uName').value = ''; }
+  catch (e) { toast(errMsg(e), 4000); } finally { loading(false); }
+};
+$('btnSync').onclick = async () => {
+  loading(true, '同步日曆中（首次可能需 1 分鐘）…');
+  try { const r = await api('syncNow'); toast(r.msg || '完成', 4000); if (r.ok) $('syncInfo').textContent = '剛剛同步'; }
+  catch (e) { toast(errMsg(e), 4000); } finally { loading(false); }
+};
+$('btnHol').onclick = async () => {
+  loading(true, '下載國定假日…');
+  try { const r = await api('updateHolidays'); toast(r.msg, 4000); }
+  catch (e) { toast(errMsg(e), 5000); } finally { loading(false); }
+};
+$('btnReview').onclick = async () => {
+  loading(true, '讀取中…');
+  try {
+    const list = await api('review');
+    const cols = ['類型', '說明', '日期', '工程名稱', '項目', '單位', '來源'];
+    $('reviewBox').innerHTML = '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' +
+      (list.map(r => '<tr>' + cols.map(c => '<td>' + esc(r[c]) + '</td>').join('') + '</tr>').join('') || '<tr><td colspan="7">沒有待確認項目</td></tr>') + '</tbody></table>';
+    $('reviewBox').classList.remove('hide');
+  } catch (e) { toast(errMsg(e)); } finally { loading(false); }
+};
+
+boot();
+</script>
+</body>
+</html>
