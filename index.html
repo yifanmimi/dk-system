@@ -276,6 +276,9 @@ button:disabled{opacity:.5;cursor:default}
 #tbCode td:nth-child(3){min-width:12em}
 .hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
 .note2{font-size:12px;color:var(--mute);margin-top:6px}
+.cinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;font-size:13px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:6px 10px}
+.cinfo div{display:flex;gap:6px;min-width:0}.cinfo b{font-weight:500;color:var(--mute);white-space:nowrap;flex:none}.cinfo span{overflow-wrap:anywhere}
+@media(max-width:620px){.cinfo{grid-template-columns:1fr}}
 .sttabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line,#e1e5ea)}
 .sttabs button{border:0;background:none;padding:8px 14px;font-size:14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .sttabs button.on{color:var(--pri,#1f5fa8);border-bottom-color:var(--pri,#1f5fa8);font-weight:600}
@@ -340,7 +343,7 @@ button:disabled{opacity:.5;cursor:default}
       <button class="b" id="btnCsv">下載 CSV</button>
     </div>
     <div class="tbl"><table><thead><tr>
-      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="工作人員">工作人員</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
+      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
     </tr></thead><tbody id="listBody"></tbody></table></div>
   </section>
 
@@ -1588,6 +1591,7 @@ if(!window.REC_EMBED) recStart();
         <label class="req">單位</label><select id="c單位"></select>
         <label>工作人員</label><input id="c工作人員" list="dlStaff">
         <label class="req">工程名稱</label><div class="full"><input id="c工程名稱" list="dlTender" placeholder="輸入關鍵字，可從標案清單選取" style="width:100%"></div>
+        <label class="cInfoL">工程資訊</label><div class="full cinfo" id="cInfo"></div>
         <label></label><div class="full info" id="tenderInfo">選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。</div>
         <label>委員1</label><input id="c委員1" list="dlCom">
         <label>委員2</label><input id="c委員2" list="dlCom">
@@ -1899,15 +1903,15 @@ function renderList() {
   $('listCnt').textContent = '共 ' + list.length + ' 筆';
   $('listBody').innerHTML = list.map(c => '<tr data-id="' + c.案件編號 + '"' + (c.狀態 === '已取消' || c.狀態 === '已作廢' ? ' class="cx"' : '') + '>' +
     '<td>' + dateText(c) + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
-    '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td><td>' + esc(c.工作人員) + '</td>' +
+    '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td>' +
     '<td><span class="st ' + c.狀態 + '">' + c.狀態 + '</span></td><td>' + (c.紀錄表期限 || '') + '</td><td>' + (c.報部改善期限 || '') + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
-    '<tr><td colspan="10" class="cnt">沒有符合條件的案件</td></tr>';
+    '<tr><td colspan="9" class="cnt">沒有符合條件的案件</td></tr>';
 }
 ['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
 $('fKey').oninput = renderList;
 $('listBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id); });
 $('btnCsv').onclick = () => {
-  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數'];
+  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const csv = '﻿' + [cols.map(q).join(',')].concat(filtered().map(c => cols.map(k => q(c[k] === true ? '是' : c[k])).join(','))).join('\r\n');
   const a = document.createElement('a');
@@ -2158,6 +2162,11 @@ function openCase(id, date) {
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
   if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
+  // 工程資訊（由標案清單帶入，唯讀顯示）
+  const money = v => v === '' || v == null ? '' : (isNaN(+v) ? esc(v) : (+v).toLocaleString('zh-TW') + ' 千元');
+  const INFO = [['發包預算', money], ['契約金額', money], ['金額等級'], ['自辦委外'], ['設計單位'], ['監造單位'], ['承包商'], ['專案管理單位']];
+  $('cInfo').innerHTML = c ? INFO.map(([k, f]) => '<div><b>' + k + '</b><span>' + ((f ? f(c[k]) : esc(c[k])) || '<span class="cnt">—</span>') + '</span></div>').join('') : '';
+  $('cInfo').classList.toggle('hide', !c); document.querySelector('.cInfoL').classList.toggle('hide', !c);
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
   if (!c) setTimeout(() => $('c日期').focus(), 50);
