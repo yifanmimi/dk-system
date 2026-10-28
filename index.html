@@ -277,6 +277,8 @@ button:disabled{opacity:.5;cursor:default}
 #tbCode td:nth-child(3){min-width:12em}
 .hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
 .note2{font-size:12px;color:var(--mute);margin-top:6px}
+.tdsum{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.tdsum span{background:#f3f5f8;border-radius:6px;padding:4px 10px;font-size:13px}.tdsum .e{background:#fdecea;color:#b03a2e}.tdsum .w{background:#fff4e0;color:#9a5b00}.tdsum .ok{background:#e6f4ea;color:#2e7d4f}
+#tdReport td.e{color:#b03a2e}#tdReport td.w{color:#9a5b00}
 .rocd{position:relative;display:inline-flex;align-items:center;gap:2px;min-width:0}.rocd input[type=text]{flex:1;min-width:7.5em;width:100%}
 .stf .rocd input[type=text]{width:7.5em;flex:none;min-width:0}
 .rocd input.bad{border-color:#d93025;background:#fff4f4}.rocd .rocb{border:1px solid var(--line,#d5dbe1);background:#fff;border-radius:6px;padding:4px 6px;cursor:pointer;line-height:1}
@@ -387,6 +389,12 @@ button:disabled{opacity:.5;cursor:default}
         <div class="row" style="margin-top:10px"><button class="b" id="btnHol">更新國定假日</button><span class="cnt">從新北市資料開放平臺下載行政機關辦公日曆</span></div>
         <div class="row" style="margin-top:10px"><button class="b" id="btnReview">檢視搬遷待確認清單</button></div>
         <div id="reviewBox" class="tbl hide" style="margin-top:10px;max-height:420px"></div>
+      </div>
+      <div class="card" id="tenderCard" style="grid-column:1/-1">
+        <h3 style="margin-top:0">標案清單更新</h3>
+        <div class="cnt" id="tdStatus">讀取中…</div>
+        <div class="row" style="margin-top:10px"><input type="file" id="tdFile" accept=".xlsx,.csv"><span class="cnt">請上傳工程會「標案自選欄位表」匯出的 Excel（.xlsx）或 CSV；.xls 請先用 Excel 另存為 .xlsx</span></div>
+        <div id="tdReport" class="hide" style="margin-top:10px"></div>
       </div>
     </div>
   </section>
@@ -1599,7 +1607,7 @@ if(!window.REC_EMBED) recStart();
         <label class="req">項目</label><select id="c項目"></select>
         <label class="req">單位</label><select id="c單位"></select>
         <label>工作人員</label><input id="c工作人員" list="dlStaff">
-        <label class="req">工程名稱</label><div class="full"><input id="c工程名稱" list="dlTender" placeholder="輸入關鍵字，可從標案清單選取" style="width:100%"></div>
+        <label class="req">工程名稱</label><div class="full" style="display:flex;gap:8px;align-items:center"><input id="c工程名稱" list="dlTender" placeholder="輸入關鍵字，可從標案清單選取（預設只列施工中與未開工）" style="flex:1"><label style="white-space:nowrap;font-size:13px" title="選單也列出已完工的標案（補登過去的督導時使用）"><input type="checkbox" id="cIncDone"> 含已完工</label></div>
         <label class="cInfoL">工程資訊</label><div class="full cinfo" id="cInfo">
         </div>
         <label>委員1</label><input id="c委員1" list="dlCom">
@@ -1668,6 +1676,7 @@ function applyPerms() {
   [...$('nav').querySelectorAll('button')].forEach(b => b.classList.toggle('hide', !b.dataset.p.split(',').some(has)));
   $('userCard').classList.toggle('hide', !has('帳號管理'));
   $('sysCard').classList.toggle('hide', !has('系統維護'));
+  $('tenderCard').classList.toggle('hide', !has('系統維護'));
   const cur = $('nav').querySelector('button[data-v="' + S.view + '"]');
   if (!cur || cur.classList.contains('hide')) {
     const first = [...$('nav').querySelectorAll('button')].find(b => !b.classList.contains('hide'));
@@ -2267,21 +2276,33 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('dlgMas
 /* 標案清單：首頁顯示後才在背景讀取（先用本機暫存） */
 async function loadTenders() {
   if (S.tenders && S._tendersFresh) return;
-  if (!S.tenders) { try { S.tenders = JSON.parse(localStorage.getItem('dk_tenders_v1') || 'null'); } catch (e) { } }
+  if (!S.tenders) { try { S.tenders = JSON.parse(localStorage.getItem('dk_tenders_v2') || 'null'); } catch (e) { } }
   try {
     const t = await api('tenders', {});
-    S.tenders = t; S._tendersFresh = true;
-    try { localStorage.setItem('dk_tenders_v1', JSON.stringify(t)); } catch (e) { }
+    S.tenders = t; S._tendersFresh = true; S._tHasActual = null;
+    try { localStorage.setItem('dk_tenders_v2', JSON.stringify(t)); } catch (e) { }
     if (!$('dlgMask').classList.contains('hide')) { updateTenderList(); showTenderInfo(); }
   } catch (e) { }
 }
 /* 標案清單：依所選單位縮小候選 */
+/* 施工狀態：依開工日與完工日判斷（不用標案清單的「實際進度」，因不會隨時更新）
+   完工：有「實際完工日期」就以它為準；整份清單都沒有實際完工日期時，才以（變更設計後）預定完工日期判斷 */
+function tenderState(t) {
+  const today = todayStr();
+  const useActual = S._tHasActual != null ? S._tHasActual : (S._tHasActual = (S.tenders || []).some(x => x.實完));
+  const doneDate = useActual ? t.實完 : t.完工;
+  if (doneDate && doneDate <= today) return { k: 'done', txt: '已完工 ' + R(doneDate) };
+  if (!t.開工 || t.開工 > today) return { k: 'todo', txt: '未開工' + (t.開工 ? ' ' + R(t.開工) : '') };
+  return { k: 'run', txt: '施工中' + (t.完工 ? '（預定完工 ' + R(t.完工) + '）' : '') };
+}
 function updateTenderList() {
-  const u = $('c單位').value.replace(/管理處$/, '');
+  const u = $('c單位').value.replace(/管理處$/, ''), inc = $('cIncDone').checked;
   let list = S.tenders || [];
   if (u) { const f = list.filter(t => t.機關.indexOf(u) >= 0); if (f.length) list = f; }
-  $('dlTender').innerHTML = list.slice(0, 1500).map(t => '<option value="' + esc(t.名稱) + '">' + esc(t.編號 + '｜' + t.縣市) + '</option>').join('');
+  list = list.map(t => [t, tenderState(t)]).filter(x => inc || x[1].k !== 'done');
+  $('dlTender').innerHTML = list.slice(0, 1500).map(([t, st]) => '<option value="' + esc(t.名稱) + '">' + esc(t.編號 + '｜' + t.縣市 + '｜' + st.txt) + '</option>').join('');
 }
+$('cIncDone').onchange = updateTenderList;
 /* ===== 工程資訊：標案清單資料、所屬計畫與工程基本資料整合在同一區 =====
    先由標案清單帶入（標示「標案清單」），之後可自行修改，儲存後寫入資料庫；
    金額等級（依發包預算）、自辦委外（依監造單位）由系統判斷，不開放填寫 */
@@ -2345,6 +2366,145 @@ async function loadTenderInfo(nameChanged) {
   deriveInfo();
   $('infoNote').innerHTML = !t ? '<span class="soon">標案清單中找不到此工程名稱，仍可儲存，資料請手動填寫。</span>'
     : '✔ 標案清單有此工程' + (n ? '，已帶入標示「標案清單」的欄位' : '') + '；各欄位可再修改，儲存後寫入資料庫。';
+}
+/* ===================== 標案清單更新：讀檔 → 檢查各欄位 → 確認後上傳 ===================== */
+const TD_REQ = ['編號', '標案名稱', '執行機關', '縣市鄉鎮', '實際開工日期', '預定完工日期'];
+const TD_OPT = ['計畫名稱', '發包預算', '決標金額', '設計單位', '監造單位', '專案管理單位', '得標廠商', '變更設計後預定完工日期', '實際完工日期'];
+const TD_NUM = ['發包預算', '決標金額', '結算金額', '決算金額'];
+async function loadTenderStatus() {
+  try {
+    const r = await api('tenderStatus', {}), i = r.info || {};
+    $('tdStatus').textContent = '目前標案清單 ' + r.count + ' 筆' + (i.time ? '｜上次更新：' + R(i.time) + '　' + (i.by || '') + (i.file ? '（' + i.file + '）' : '') : '');
+  } catch (e) { $('tdStatus').textContent = errMsg(e); }
+}
+/** 讀 .xlsx（以 JSZip 解析第一張工作表）→ 二維陣列；數值保留數字，其餘為文字 */
+async function readXlsxRows(file) {
+  const z = await JSZip.loadAsync(file);
+  const P = x => new DOMParser().parseFromString(x, 'application/xml');
+  const wb = P(await z.file('xl/workbook.xml').async('string'));
+  const rid = wb.getElementsByTagName('sheet')[0].getAttribute('r:id');
+  const rels = P(await z.file('xl/_rels/workbook.xml.rels').async('string'));
+  let target = [...rels.getElementsByTagName('Relationship')].find(r => r.getAttribute('Id') === rid).getAttribute('Target');
+  target = target.replace(/^\//, ''); if (target.indexOf('xl/') !== 0) target = 'xl/' + target;
+  const ssf = z.file('xl/sharedStrings.xml');
+  const ss = ssf ? [...P(await ssf.async('string')).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const doc = P(await z.file(target).async('string'));
+  const colIdx = ref => { let n = 0; for (const ch of ref.replace(/\d+/g, '')) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  const rows = [];
+  [...doc.getElementsByTagName('row')].forEach(row => {
+    const ri = +row.getAttribute('r') - 1, out = [];
+    [...row.getElementsByTagName('c')].forEach(c => {
+      const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], is = c.getElementsByTagName('is')[0];
+      let val = '';
+      if (t === 's') val = ss[+(v && v.textContent)] || '';
+      else if (t === 'inlineStr') val = is ? [...is.getElementsByTagName('t')].map(x => x.textContent).join('') : '';
+      else if (v) val = t === 'str' || t === 'b' || t === 'e' ? v.textContent : (isNaN(+v.textContent) ? v.textContent : +v.textContent);
+      out[colIdx(c.getAttribute('r'))] = val;
+    });
+    rows[ri] = Array.from(out, x => x == null ? '' : x);
+  });
+  return Array.from(rows, r => r || []);
+}
+/** 讀 CSV（UTF-8 或 Big5） */
+async function readCsvRows(file) {
+  const buf = await file.arrayBuffer();
+  let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { text = new TextDecoder('big5').decode(buf); }
+  text = text.replace(/^\ufeff/, '');
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+/** 日期：Excel 序號、民國或西元文字 → yyyy-mm-dd；空白 ''；無法辨識 null */
+function tdDate(v) {
+  if (v === '' || v == null) return '';
+  if (typeof v === 'number') { if (v < 1000 || v > 80000) return null; const d = new Date(Math.round((v - 25569) * 86400000)); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  return parseRoc(String(v).trim().replace(/\s+.*$/, ''));
+}
+S.td = null;
+$('tdFile').onchange = async () => {
+  const f = $('tdFile').files[0]; if (!f) return;
+  $('tdReport').classList.remove('hide'); $('tdReport').innerHTML = '<div class="cnt">讀取與檢查中…</div>';
+  try {
+    let rows;
+    if (/\.xlsx$/i.test(f.name)) rows = await readXlsxRows(f);
+    else if (/\.csv$/i.test(f.name)) rows = await readCsvRows(f);
+    else throw new Error('不支援的檔案格式，請用 .xlsx 或 .csv（.xls 請先另存為 .xlsx）');
+    S.td = checkTender(rows, f.name); showTenderReport();
+  } catch (e) { S.td = null; $('tdReport').innerHTML = '<div class="errbox">' + esc(errMsg(e)) + '</div>'; }
+};
+function checkTender(raw, fileName) {
+  const errs = [], warns = [];
+  // 找欄名列：前 15 列中同時有「標案名稱」與「編號」者（工程會匯出檔前幾列是標題）
+  const hi = raw.slice(0, 15).findIndex(r => r.some(v => String(v).replace(/\s+/g, '') === '標案名稱') && r.some(v => String(v).replace(/\s+/g, '') === '編號'));
+  if (hi < 0) throw new Error('找不到欄名列（需有「編號」「標案名稱」欄），請確認是工程會「標案自選欄位表」匯出的檔案');
+  const header = raw[hi].map((h, i) => String(h || '').replace(/\s+/g, '') || ('欄' + (i + 1)));
+  const miss = TD_REQ.filter(k => header.indexOf(k) < 0);
+  if (miss.length) errs.push(['欄位', '', '缺少必要欄位：' + miss.join('、')]);
+  const missOpt = TD_OPT.filter(k => header.indexOf(k) < 0);
+  if (missOpt.length) warns.push(['欄位', '', '缺少建議欄位（相關資料將空白）：' + missOpt.join('、')]);
+  const ci = k => header.indexOf(k);
+  const rows = [], seen = {};
+  raw.slice(hi + 1).forEach((r, k) => {
+    const line = hi + k + 2;   // Excel 列號
+    if (!r || r.every(v => v === '' || v == null)) return;
+    const row = header.map((h, j) => r[j] == null ? '' : r[j]);
+    const name = String(row[ci('標案名稱')] || '').trim();
+    if (!name) { warns.push([line, '標案名稱', '空白，此列不匯入']); return; }
+    const no = String(row[ci('編號')] || '').trim();
+    if (!no) warns.push([line, '編號', '空白（' + name + '）']);
+    else if (seen[no]) warns.push([line, '編號', no + ' 重複（同第 ' + seen[no] + ' 列）']); else seen[no] = line;
+    header.forEach((h, j) => {
+      if (h.indexOf('日期') >= 0) {
+        const d = tdDate(row[j]);
+        if (d === null) errs.push([line, h, '日期無法辨識：' + row[j]]); else row[j] = d;
+      } else if (TD_NUM.indexOf(h) >= 0 && row[j] !== '') {
+        const n = String(row[j]).replace(/[,，\s]/g, '');
+        if (n === '' || n === '-') row[j] = ''; else if (isNaN(+n)) warns.push([line, h, '不是數字：' + row[j]]); else row[j] = n;
+      } else row[j] = typeof row[j] === 'number' ? String(row[j]) : String(row[j]).trim();
+    });
+    const st = row[ci('實際開工日期')], ed = row[ci('變更設計後預定完工日期')] || row[ci('預定完工日期')];
+    if (st && ed && st > ed) warns.push([line, '日期', '開工日 ' + R(st) + ' 晚於完工日 ' + R(ed)]);
+    rows.push(row);
+  });
+  if (!rows.length) errs.push(['資料', '', '沒有任何資料列']);
+  // 與目前清單比較
+  const old = S.tenders || [], oldNo = {}, newNo = {};
+  old.forEach(t => { if (t.編號) oldNo[t.編號] = 1; });
+  rows.forEach(r => { const n = r[ci('編號')]; if (n) newNo[n] = 1; });
+  const added = Object.keys(newNo).filter(n => !oldNo[n]).length, removed = Object.keys(oldNo).filter(n => !newNo[n]).length;
+  if (old.length && rows.length < old.length * 0.5) warns.push(['資料', '', '新檔只有 ' + rows.length + ' 筆，少於目前 ' + old.length + ' 筆的一半，請確認匯出條件是否正確（上傳會整批取代）']);
+  return { fileName, header, rows, errs, warns, added, removed, oldCount: old.length };
+}
+function showTenderReport() {
+  const t = S.td, list = t.errs.map(x => ['e', ...x]).concat(t.warns.map(x => ['w', ...x]));
+  $('tdReport').innerHTML = '<div class="tdsum"><span>檔案：' + esc(t.fileName) + '</span><span>資料 ' + t.rows.length + ' 筆（目前 ' + t.oldCount + ' 筆）</span><span>新增 ' + t.added + '、移除 ' + t.removed + '（依編號）</span>' +
+    (t.errs.length ? '<span class="e">錯誤 ' + t.errs.length + '</span>' : '<span class="ok">無錯誤</span>') + (t.warns.length ? '<span class="w">提醒 ' + t.warns.length + '</span>' : '') + '</div>' +
+    (list.length ? '<div class="tbl" style="max-height:300px"><table class="st"><thead><tr><th>類型</th><th>列</th><th>欄位</th><th>說明</th></tr></thead><tbody>' +
+      list.slice(0, 200).map(x => '<tr><td class="' + x[0] + '">' + (x[0] === 'e' ? '錯誤' : '提醒') + '</td><td>' + esc(x[1]) + '</td><td>' + esc(x[2]) + '</td><td>' + esc(x[3]) + '</td></tr>').join('') +
+      (list.length > 200 ? '<tr><td colspan="4" class="cnt">…其餘 ' + (list.length - 200) + ' 筆未列出</td></tr>' : '') + '</tbody></table></div>' : '') +
+    '<div class="row" style="margin-top:10px">' + (t.errs.length ? '<span class="cnt" style="color:#b03a2e">有錯誤，請修正檔案後重新選擇</span>' :
+      '<button class="b p" id="tdGo">確認上傳並取代目前標案清單</button><span class="cnt">上傳前會自動備份到「標案清單_前一版」</span>') + '</div>';
+  if (!t.errs.length) $('tdGo').onclick = uploadTender;
+}
+async function uploadTender() {
+  const t = S.td; if (!t || t.errs.length) return;
+  if (!confirm('確定以「' + t.fileName + '」（' + t.rows.length + ' 筆）取代目前標案清單？')) return;
+  loading(true, '上傳標案清單中…');
+  try {
+    const r = await api('tenderUpload', { header: t.header, rows: t.rows, fileName: t.fileName });
+    toast('標案清單已更新：' + r.count + ' 筆', 4000);
+    $('tdReport').innerHTML = '<div class="tdsum"><span class="ok">已更新 ' + r.count + ' 筆（原 ' + r.info.before + ' 筆，已備份）</span></div>';
+    $('tdFile').value = ''; S.td = null; S._tendersFresh = false; S._tHasActual = null; S.tiMemo = {};
+    loadTenderStatus(); loadTenders();
+  } catch (e) { toast(errMsg(e), 6000); } finally { loading(false); }
 }
 /* 期限試算（與後台規則相同） */
 function addWorkdays(ds, n) {
@@ -2467,6 +2627,7 @@ $('btnNew').onclick = () => openCase(null, S.view === 'cal' ? null : null);
 /* ===================== 管理 ===================== */
 let adminLoaded = false;
 async function renderAdmin() {
+  if (has('系統維護') && !S._tdLoaded) { S._tdLoaded = true; loadTenderStatus(); }
   if (adminLoaded || !has('帳號管理')) return; adminLoaded = true;
   try { drawUsers(await api('listUsers')); } catch (e) { adminLoaded = false; toast(errMsg(e)); }
 }
