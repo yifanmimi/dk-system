@@ -763,6 +763,7 @@ const coll = new Intl.Collator('zh-Hant-TW',{numeric:true});
 function sortVal(c,k){
   if(k==='委員') return [c['委員1'],c['委員2']].filter(Boolean).join('、');
   if(k==='成績'||k==='缺失數'){ if(k==='缺失數'&&c['缺失未建立']) return -1; const n=parseFloat(c[k]); return isNaN(n)?'':n; }
+  if(k==='單位' && window.dkUnitRank) return window.dkUnitRank(c[k]);   // 依習慣順序：管理處在前、縣市政府在後
   return c[k]==null?'':String(c[k]);
 }
 function cmpCase(a,b){
@@ -1699,7 +1700,7 @@ async function boot(year) {
 }
 function applyInit(d, stale) {
   {
-    S.me = d.me; S.year = String(d.year); S.years = d.years.map(String); S.cases = d.cases; S.refs = d.refs;
+    S.me = d.me; S.year = String(d.year); S.years = d.years.map(String); S.cases = d.cases; S.refs = d.refs; UNIT_ORDER = null;
     S.holidays = {}; d.refs.holidays.forEach(h => S.holidays[h] = 1);
     // 年度選單：資料庫已有的年度＋目前選的年度＋明年（尚無案件也能先切過去登錄）
     const nextY = String(+todayStr().slice(0, 4) - 1911 + 1);
@@ -1726,10 +1727,10 @@ function fillStatic() {
   // 單位依單位別分組
   const groups = {};
   S.refs.units.forEach(u => { (groups[u.kind || '其他'] = groups[u.kind || '其他'] || []).push(u.name); });
-  $('c單位').innerHTML = '<option value="">請選擇</option>' + Object.keys(groups).map(g =>
+  $('c單位').innerHTML = '<option value="">請選擇</option>' + Object.keys(groups).sort((a, b) => (/管理處/.test(b) ? 1 : 0) - (/管理處/.test(a) ? 1 : 0)).map(g =>
     '<optgroup label="' + esc(g) + '">' + groups[g].map(n => '<option>' + esc(n) + '</option>').join('') + '</optgroup>').join('');
   const unitsUsed = {}; S.cases.forEach(c => unitsUsed[c.單位] = 1);
-  $('fUnit').innerHTML = '<option value="">全部單位</option>' + Object.keys(unitsUsed).sort().map(u => '<option>' + esc(u) + '</option>').join('');
+  $('fUnit').innerHTML = '<option value="">全部單位</option>' + Object.keys(unitsUsed).sort(cmpUnit).map(u => '<option>' + esc(u) + '</option>').join('');
   $('fMonth').innerHTML = '<option value="">全部月份</option>' + Array.from({ length: 12 }, (_, i) => '<option value="' + pad(i + 1) + '">' + (i + 1) + ' 月</option>').join('');
   $('dlCom').innerHTML = S.refs.committees.map(n => '<option value="' + esc(n) + '">').join('');
   $('dlLeader').innerHTML = S.refs.leaders.map(n => '<option value="' + esc(n) + '">').join('');
@@ -1848,7 +1849,30 @@ const ST_ORDER = ['已排定', '待登錄結果', '已登錄結果', '已取消'
 S.sort = (() => { try { return JSON.parse(localStorage.getItem('dk_sort_list')) || null; } catch (e) { return null; } })() || { k: '日期', d: -1 };
 if (S.sort.k === '案件編號') S.sort = { k: '日期', d: -1 };   // 案件編號欄已不顯示
 const coll = new Intl.Collator('zh-Hant-TW', { numeric: true });
-function sortVal(c, k) { return k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
+/* 單位排序：依「單位清單」的習慣順序，管理處在前、縣市政府在後；清單外的單位（如某縣府下屬局處）排在所屬縣府之後 */
+var UNIT_DEFAULT = ['瑠公管理處', '七星管理處', '北基管理處', '桃園管理處', '石門管理處', '新竹管理處', '苗栗管理處', '臺中管理處', '彰化管理處', '南投管理處', '雲林管理處', '嘉南管理處', '高雄管理處', '屏東管理處', '宜蘭管理處', '花蓮管理處', '臺東管理處',
+  '臺北市政府', '新北市政府', '桃園市政府', '臺中市政府', '臺南市政府', '高雄市政府', '新竹縣政府', '苗栗縣政府', '彰化縣政府', '南投縣政府', '雲林縣政府', '嘉義縣政府', '屏東縣政府', '宜蘭縣政府', '花蓮縣政府', '臺東縣政府', '澎湖縣政府', '金門縣政府', '連江縣政府', '基隆市政府', '新竹市政府', '嘉義市政府'];
+var UNIT_ORDER = null;
+function unitOrder() {
+  if (UNIT_ORDER) return UNIT_ORDER;
+  const us = S.refs && S.refs.units && S.refs.units.length ? S.refs.units : null;
+  if (!us) return UNIT_DEFAULT;
+  const isMgmt = u => /管理處$/.test(u.name) || /管理處/.test(u.kind || '');
+  UNIT_ORDER = us.filter(isMgmt).map(u => u.name).concat(us.filter(u => !isMgmt(u)).map(u => u.name));
+  return UNIT_ORDER;
+}
+function unitRank(name) {
+  const o = unitOrder(); name = String(name || '');
+  let i = o.indexOf(name); if (i >= 0) return i;
+  let best = -1; o.forEach((n, j) => { if (name.indexOf(n) === 0 && (best < 0 || n.length > o[best].length)) best = j; });
+  if (best >= 0) return best + 0.5;
+  // 單位清單沒有的：依內建習慣順序，再不到就排最後（管理處仍在縣市政府前）
+  const k = UNIT_DEFAULT.findIndex(n => name.indexOf(n) === 0);
+  return k >= 0 ? 100 + k + (/管理處$/.test(name) ? 0 : 500) : 1000 + (/管理處$/.test(name) ? 0 : 500);
+}
+function cmpUnit(a, b) { return unitRank(a) - unitRank(b) || String(a).localeCompare(String(b), 'zh-Hant-TW'); }
+window.dkUnitRank = unitRank;   // 督導紀錄分頁共用
+function sortVal(c, k) { return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
 function cmpCase(a, b) {
   const k = S.sort.k, d = S.sort.d, va = sortVal(a, k), vb = sortVal(b, k);
   const ea = va === '' || va === -1, eb = vb === '' || vb === -1;
@@ -1974,6 +1998,7 @@ document.querySelector('#v-stat').addEventListener('click', e => {
   D.opt._si = i; D.opt._sd = dir;
   const val = v => { const n = parseFloat(String(v).replace(/<[^>]*>/g, '').replace(/[,%]/g, '')); return isNaN(n) ? null : n; };
   D.rows.sort((a, b) => {
+    if (D.opt.unitCol === i) return cmpUnit(a[i], b[i]) * dir;
     if (D.opt.num.indexOf(i) >= 0) { const x = val(a[i]), y = val(b[i]); if (x == null) return 1; if (y == null) return -1; return (x - y) * dir; }
     return coll.compare(String(a[i]), String(b[i])) * dir;
   });
@@ -2019,7 +2044,7 @@ function renderStats() {
     const nodef = l.filter(c => c[SI.st] !== '已排定' && !c[SI.def]).length;
     return [u, kindOf(u), l.length, s2.length, fmt(avg(s2), 1), s2.length ? Math.max(...s2) : '—', s2.length ? Math.min(...s2) : '—',
       s2.filter(x => x >= 70 && x < 80).length, s2.filter(x => x < 70).length, fmt(avg(dd.map(c => c[SI.def])), 1), nodef];
-  }).sort((a, b) => (parseFloat(b[4]) || 0) - (parseFloat(a[4]) || 0)), { num: [2, 3, 4, 5, 6, 7, 8, 9, 10], sort: true });
+  }).sort((a, b) => cmpUnit(a[0], b[0])), { num: [2, 3, 4, 5, 6, 7, 8, 9, 10], sort: true, unitCol: 0, _si: 0, _sd: 1 });
   // 4. 缺失分析
   const byId = {}; all.forEach(c => { byId[c[SI.id]] = c; });
   // 缺失列 [案件, 代碼, 等級, 筆數, 扣點]；只取篩選後案件的缺失
