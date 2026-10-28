@@ -2243,44 +2243,51 @@ function showTenderInfo() {
   if (t && !$('c所屬計畫').value && t.計畫 && t.計畫 !== '無') $('c所屬計畫').value = t.計畫;
 }
 $('c單位').onchange = updateTenderList;
-$('c工程名稱').onchange = () => { showTenderInfo(); loadTenderInfo(); };
-/* ===== 工程資訊：標案清單有資料的欄位帶入並鎖定，沒有的開放填寫 ===== */
+$('c工程名稱').onchange = () => { showTenderInfo(); loadTenderInfo(true); };
+/* ===== 工程資訊：先由標案清單帶入，之後可自行修改；儲存時寫入資料庫 ===== */
 const INFO_F = ['發包預算', '契約金額', '金額等級', '自辦委外', '設計單位', '監造單位', '承包商', '專案管理單位'];
-const INFO_PH = { 發包預算: '千元', 契約金額: '千元', 金額等級: '依發包預算自動判定', 自辦委外: '依監造單位自動判定' };
+const INFO_PH = { 發包預算: '千元', 契約金額: '千元', 金額等級: '依發包預算自動帶入', 自辦委外: '依監造單位自動帶入' };
 S.tiMemo = {};
 function renderInfo(c, ro) {
   S.infoRo = ro;
   $('cInfo').innerHTML = INFO_F.map(k => '<div><b>' + k + '</b><input id="i' + k + '" data-k="' + k + '" placeholder="' + (INFO_PH[k] || '') + '"><span class="src" id="s' + k + '"></span></div>').join('') +
     '<div class="cnt full2" id="infoNote"></div>';
   INFO_F.forEach(k => { const el = $('i' + k); el.value = c ? (c[k] == null ? '' : String(c[k])) : ''; el.readOnly = ro; });
-  deriveInfo(); loadTenderInfo();
+  loadTenderInfo(false);
 }
-/* 金額等級、自辦委外：有發包預算／監造單位時自動判定（不可改），沒有時可手填 */
-function deriveInfo() {
+/* 依發包預算、監造單位推算金額等級、自辦委外（force：來源欄位被修改時重新帶入；否則只補空白） */
+function deriveInfo(force) {
   const amt = $('i發包預算').value.replace(/[,，\s]/g, ''), sup = $('i監造單位').value.trim();
   const lv = amt === '' || isNaN(+amt) ? '' : (+amt < 10000 ? '未達1千萬元' : +amt < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上');
   const so = sup ? (/農田水利署/.test(sup) ? '自辦' : '委外') : '';
-  [['金額等級', lv], ['自辦委外', so]].forEach(([k, v]) => {
+  [['金額等級', lv, force === '發包預算'], ['自辦委外', so, force === '監造單位']].forEach(([k, v, f]) => {
     const el = $('i' + k);
-    if (v) { el.value = v; el.readOnly = true; $('s' + k).textContent = '自動'; }
-    else { el.readOnly = S.infoRo; if ($('s' + k).textContent === '自動') { $('s' + k).textContent = ''; el.value = ''; } }
+    if (v && (f || !el.value.trim())) { el.value = v; $('s' + k).textContent = '自動'; }
   });
 }
-$('cInfo').addEventListener('input', e => { if (e.target.dataset.k === '發包預算' || e.target.dataset.k === '監造單位') deriveInfo(); });
-async function loadTenderInfo() {
+$('cInfo').addEventListener('input', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  $('s' + k).textContent = '';                       // 自行修改後不再標示來源
+  if (k === '發包預算' || k === '監造單位') deriveInfo(k);
+});
+/* 查標案清單並帶入：開啟既有行程時只補空白欄位；新增或改工程名稱時以標案清單資料帶入（之後仍可修改） */
+async function loadTenderInfo(nameChanged) {
   const name = $('c工程名稱').value.trim();
-  // 先解除上一個標案帶入的鎖定
-  INFO_F.forEach(k => { if ($('s' + k).textContent === '標案清單') { $('s' + k).textContent = ''; $('i' + k).readOnly = S.infoRo; $('i' + k).value = S.editing && S.editing[k] != null ? String(S.editing[k]) : ''; } });
+  if (nameChanged) INFO_F.forEach(k => { if ($('s' + k).textContent) { $('i' + k).value = ''; $('s' + k).textContent = ''; } });   // 清掉上一個標案帶入的值
   $('infoNote').textContent = name ? '查詢標案清單中…' : '';
   if (!name) { deriveInfo(); return; }
   let t;
   try { t = await (S.tiMemo[name] = S.tiMemo[name] || api('tenderInfo', { name: name })); }
-  catch (e) { delete S.tiMemo[name]; $('infoNote').textContent = '標案清單讀取失敗，可手動填寫'; return; }
+  catch (e) { delete S.tiMemo[name]; $('infoNote').textContent = '標案清單讀取失敗，請手動填寫'; return; }
   if ($('c工程名稱').value.trim() !== name) return;   // 名稱已改，不套用舊結果
-  const keys = t ? Object.keys(t).filter(k => INFO_F.indexOf(k) >= 0) : [];
-  keys.forEach(k => { $('i' + k).value = String(t[k]); $('i' + k).readOnly = true; $('s' + k).textContent = '標案清單'; });
-  deriveInfo();
-  $('infoNote').textContent = !t ? '標案清單沒有此工程，請手動填寫。' : keys.length < INFO_F.length ? '標示「標案清單」的欄位由標案清單帶入；其餘標案清單沒有資料，可手動填寫。' : '全部由標案清單帶入。';
+  const overwrite = nameChanged || !S.editing;
+  let n = 0;
+  if (t && !S.infoRo) Object.keys(t).filter(k => INFO_F.indexOf(k) >= 0 && k !== '金額等級' && k !== '自辦委外').forEach(k => {
+    const el = $('i' + k);
+    if (overwrite || !el.value.trim()) { el.value = String(t[k]); $('s' + k).textContent = '標案清單'; n++; }
+  });
+  deriveInfo(overwrite ? '發包預算' : null); if (overwrite) deriveInfo('監造單位');
+  $('infoNote').textContent = !t ? '標案清單沒有此工程，請手動填寫。' : n ? '已由標案清單帶入（標示「標案清單」），可再修改，儲存後寫入資料庫。' : '可直接修改，儲存後寫入資料庫。';
 }
 /* 期限試算（與後台規則相同） */
 function addWorkdays(ds, n) {
