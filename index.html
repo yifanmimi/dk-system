@@ -307,7 +307,7 @@ button:disabled{opacity:.5;cursor:default}
     <button data-v="list" class="on" data-p="行程檢視">清單</button>
     <button data-v="cal" data-p="行程檢視">月曆</button>
     <button data-v="due" data-p="行程檢視">期限提醒</button>
-    <button data-v="rec" data-p="督導紀錄檢視">督導紀錄</button>
+    <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
     <button data-v="admin" class="hide" id="navAdmin" data-p="帳號管理,系統維護">管理</button>
   </nav>
@@ -1646,7 +1646,7 @@ const has = p => !!(S.me && (S.me.perms || []).indexOf(p) >= 0);
 const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視'], ['行程編輯', '新增、修改、取消、還原'], ['行程作廢', '作廢及檢視已作廢']]],
-  ['督導紀錄', [['督導紀錄檢視', '檢視紀錄與督導結果'], ['督導紀錄編輯', '登錄結果、AI 辨識、轉檔、存雲端']]],
+  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、AI 辨識、轉檔、存雲端']]],
   ['統計', [['統計', '統計分頁'], ['委員統計', '委員統計表']]],
   ['管理', [['帳號管理', '帳號與權限'], ['系統維護', '日曆同步、國定假日、搬遷清單']]]
 ];
@@ -2139,7 +2139,7 @@ function openCase(id, date) {
   $('btnCancel').classList.toggle('hide', ro || !c || !(c.狀態 === '已排定' || c.狀態 === '待登錄結果'));
   $('btnVoid').classList.toggle('hide', !has('行程作廢') || !c || !(c.狀態 === '已排定' || c.狀態 === '待登錄結果' || c.狀態 === '已取消'));
   $('btnRestore').classList.toggle('hide', !c || !((c.狀態 === '已取消' && canEdit()) || (c.狀態 === '已作廢' && has('行程作廢'))));
-  $('btnRecord').classList.toggle('hide', !has('督導紀錄檢視') || !c || c.狀態 === '已取消' || c.狀態 === '已作廢');
+  $('btnRecord').classList.toggle('hide', !has('督導紀錄編輯') || !c || c.狀態 === '已取消' || c.狀態 === '已作廢');
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
@@ -2275,9 +2275,9 @@ function loadRes(id) {
 }
 function showRes(r) {
   $('resList').innerHTML =
-    '<div>成績：<b>' + esc(r.成績 || '—') + '</b>　' + (r.content ? '完整督導紀錄：已儲存（' + esc(r.savedAt) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）') + '</div>' +
+    '<div>成績：<b>' + esc(r.成績 || '—') + '</b>' + (!has('督導紀錄編輯') ? '' : '　' + (r.content ? '完整督導紀錄：已儲存（' + esc(r.savedAt) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）')) + '</div>' +
     (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
-    '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>';
+    (has('督導紀錄編輯') ? '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>' : '');
 }
 $('logBox').addEventListener('toggle', async () => {
   if (!$('logBox').open || !S.editing) return;
@@ -2308,9 +2308,12 @@ function setPerms(list) { permBoxes().forEach(b => { b.checked = list.indexOf(b.
 // 勾「編輯」自動勾「檢視」；取消「檢視」自動取消同組的編輯
 $('uPerms').addEventListener('change', e => {
   const v = e.target.value, on = e.target.checked, box = x => permBoxes().find(b => b.value === x);
-  const need = { '行程編輯': '行程檢視', '行程作廢': '行程檢視', '督導紀錄編輯': '督導紀錄檢視', '委員統計': '統計' };
-  if (on && need[v]) box(need[v]).checked = true;
-  if (!on) Object.keys(need).forEach(k => { if (need[k] === v) box(k).checked = false; });
+  // 督導結果顯示在清單的行程中，所以「督導紀錄檢視」需要「行程檢視」
+  const need = { '行程編輯': '行程檢視', '行程作廢': '行程檢視', '督導紀錄檢視': '行程檢視', '督導紀錄編輯': '督導紀錄檢視', '委員統計': '統計' };
+  const on1 = x => { box(x).checked = true; if (need[x]) on1(need[x]); };
+  const off1 = x => { box(x).checked = false; Object.keys(need).forEach(k => { if (need[k] === x) off1(k); }); };
+  if (on && need[v]) on1(need[v]);
+  if (!on) off1(v);
 });
 let USERS = { perms: [], presets: {}, users: [], owner: '' };
 function drawUsers(d) {
