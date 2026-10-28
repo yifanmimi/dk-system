@@ -345,7 +345,7 @@ button:disabled{opacity:.5;cursor:default}
       <select id="fStatus"><option value="">全部狀態</option><option>已排定</option><option>待登錄結果</option><option>已登錄結果</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
       <input id="fKey" placeholder="搜尋工程名稱、委員、編號…" style="min-width:220px">
       <span class="sp"></span><span class="cnt" id="listCnt"></span>
-      <button class="b" id="btnCsv">下載 CSV</button>
+      <button class="b" id="btnCsv">下載 CSV</button><button class="b" id="btnXlsx">下載 Excel</button>
     </div>
     <div class="tbl"><table><thead><tr>
       <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
@@ -401,27 +401,27 @@ button:disabled{opacity:.5;cursor:default}
       <button data-st="1" class="on">年度執行概況</button><button data-st="2">成績與等第</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
     </div>
     <div class="stgrid">
-      <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button></h3>
+      <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button><button class="b" data-csv="tbType" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles1"></div>
         <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
           <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div></div></div>
       </div>
-      <div class="card hide" data-st="2"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button></h3>
+      <div class="card hide" data-st="2"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button><button class="b" data-csv="tbGrade" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles2"></div>
         <div class="two"><div><table class="st" id="tbGrade"></table><div class="note2">等第沿用原統計表：80 分以上甲、70–79 乙、未滿 70 丙。</div></div>
           <div><div class="cnt" style="margin-bottom:4px">成績分布（每 5 分一級）</div><div class="bars" id="stHist"></div><div class="barx" id="stHistX"></div></div></div>
       </div>
-      <div class="card hide" data-st="3"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button></h3>
+      <div class="card hide" data-st="3"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button><button class="b" data-csv="tbUnit" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbUnit"></table></div>
         <div class="note2">點欄名可排序。平均缺失數只計已建立缺失的案件（排除「缺失未建立」），避免低估。</div>
       </div>
-      <div class="card hide" data-st="4"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button></h3>
+      <div class="card hide" data-st="4"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button><button class="b" data-csv="tbCode" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles4"></div>
         <div class="two"><div><table class="st" id="tbSec"></table></div><div><table class="st" id="tbLevel"></table></div></div>
         <div class="cnt" style="margin:12px 0 4px">最常見缺失代碼前 20 名（點選列可看實際案例）</div>
         <table class="st" id="tbCode"></table>
       </div>
-      <div class="card hide" id="stComBox" data-st="5"><h3>5. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button></h3>
+      <div class="card hide" id="stComBox" data-st="5"><h3>5. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button><button class="b" data-csv="tbCom" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbCom"></table></div>
         <div class="note2">以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
       </div>
@@ -1955,14 +1955,54 @@ function renderList() {
 ['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
 $('fKey').oninput = renderList;
 $('listBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id); });
-$('btnCsv').onclick = () => {
-  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
-  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const csv = '﻿' + [cols.map(q).join(',')].concat(filtered().map(c => cols.map(k => q(c[k] === true ? '是' : c[k])).join(','))).join('\r\n');
+/* ===================== 下載（CSV／Excel） ===================== */
+/** 等第：80 分以上甲、70–79 乙、未滿 70 丙 */
+const gradeOf = sc => { const n = parseFloat(sc); return sc === '' || sc == null || isNaN(n) ? '' : n >= 80 ? '甲' : n >= 70 ? '乙' : '丙'; };
+function saveBlob(blob, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = S.year + '年度行程清單.csv'; a.target = '_self';
-  document.body.appendChild(a); a.click(); a.remove();
+  a.href = URL.createObjectURL(blob); a.download = name; a.target = '_self';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function downloadCsv(name, head, rows) {
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  saveBlob(new Blob(['\ufeff' + [head.map(q).join(',')].concat(rows.map(r => r.map(q).join(','))).join('\r\n')], { type: 'text/csv' }), name + '.csv');
+}
+/** 產生 Excel（.xlsx）：以 JSZip 組出最精簡的活頁簿；標題列粗體、凍結、可篩選，數字欄存成數值 */
+async function downloadXlsx(name, sheet, head, rows) {
+  const XH = '<' + '?xml version="1.0" encoding="UTF-8" standalone="yes"?' + '>';   // 拆開寫，避免被 Apps Script 樣板誤認為樣板語法
+  const xe = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const isNum = v => typeof v === 'number' ? isFinite(v) : /^-?(0|[1-9]\d*)(\.\d+)?$/.test(String(v));
+  const cell = (v, r, c, st) => {
+    const ref = col(c) + r; if (v == null || v === '') return '';
+    return isNum(v) && !st ? '<c r="' + ref + '"><v>' + Number(v) + '</v></c>' : '<c r="' + ref + '" t="inlineStr"' + (st ? ' s="1"' : '') + '><is><t xml:space="preserve">' + xe(v) + '</t></is></c>';
+  };
+  const all = [head].concat(rows);
+  const wch = v => [...String(v == null ? '' : v)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+  const widths = head.map((h, i) => Math.min(60, Math.max(6, ...all.slice(0, 500).map(r => wch(r[i]))) + 2));
+  const sheetXml = XH + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+    '<cols>' + widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' +
+    all.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => cell(v, ri + 1, ci, ri === 0)).join('') + '</row>').join('') +
+    '</sheetData><autoFilter ref="A1:' + col(head.length - 1) + all.length + '"/></worksheet>';
+  const z = new JSZip();
+  z.file('[Content_Types].xml', XH + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>');
+  z.file('_rels/.rels', XH + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  z.file('xl/workbook.xml', XH + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="' + xe(String(sheet).replace(/[\\\/?*\[\]:]/g, '').slice(0, 31) || '工作表1') + '" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\'' + xe(String(sheet).replace(/[\\\/?*\[\]:]/g, '').slice(0, 31) || '工作表1') + '\'!$A$1:$' + col(head.length - 1) + '$' + all.length + '</definedName></definedNames></workbook>');
+  z.file('xl/_rels/workbook.xml.rels', XH + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  z.file('xl/worksheets/sheet1.xml', sheetXml);
+  z.file('xl/styles.xml', XH + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Microsoft JhengHei"/></font><font><b/><sz val="11"/><name val="Microsoft JhengHei"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8EEF7"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+  saveBlob(await z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name + '.xlsx');
+}
+/* 行程清單：目前篩選結果 */
+function listExport() {
+  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '成績等級', '缺失數', '標案編號', '所屬計畫', '縣市鄉鎮', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
+  return { head: cols, rows: filtered().map(c => cols.map(k => k === '成績等級' ? gradeOf(c.成績) : c[k] === true ? '是' : c[k] === false ? '' : c[k])) };
+}
+$('btnCsv').onclick = () => { const d = listExport(); downloadCsv(S.year + '年度行程清單', d.head, d.rows); };
+$('btnXlsx').onclick = async () => {
+  const d = listExport();
+  try { await downloadXlsx(S.year + '年度行程清單', S.year + '年度行程', d.head, d.rows); } catch (e) { toast('Excel 產生失敗：' + errMsg(e), 4000); }
 };
 
 /* ===================== 統計 ===================== */
@@ -2150,13 +2190,12 @@ $('stMask').addEventListener('mousedown', e => { if (e.target === $('stMask')) $
 $('v-stat').addEventListener('click', e => {
   const b = e.target.closest('[data-csv]'); if (!b) return;
   const t = $(b.dataset.csv); if (!t || !t._data) return;
-  const strip = v => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-  const q = v => '"' + strip(v).replace(/"/g, '""') + '"';
-  const csv = '﻿' + [t._data.head.map(q).join(',')].concat(t._data.rows.map(r => r.map(q).join(','))).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  const F2 = statFilter(); a.download = '統計_' + b.closest('.card').querySelector('h3').firstChild.textContent.trim() + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '') + '.csv'; a.target = '_self';
-  document.body.appendChild(a); a.click(); a.remove();
+  const strip = v => typeof v === 'number' ? v : String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+  const head = t._data.head.map(strip), rows = t._data.rows.map(r => r.map(strip));
+  const title = b.closest('.card').querySelector('h3').firstChild.textContent.trim();
+  const F2 = statFilter(), name = '統計_' + title + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '');
+  if (b.dataset.fmt === 'xlsx') downloadXlsx(name, title.replace(/^\d+\.\s*/, ''), head, rows).catch(e => toast('Excel 產生失敗：' + errMsg(e), 4000));
+  else downloadCsv(name, head, rows);
 });
 
 /* ===================== 期限提醒 ===================== */
@@ -2206,7 +2245,7 @@ function openCase(id, date) {
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
-  if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
+  if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績 + ' ' + gradeOf(c.成績)) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
   renderInfo(c, ro);
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
@@ -2398,7 +2437,7 @@ function loadRes(id) {
 }
 function showRes(r) {
   $('resList').innerHTML =
-    '<div>成績：<b>' + esc(r.成績 || '—') + '</b>' + (!has('督導紀錄編輯') ? '' : '　' + (r.content ? '完整督導紀錄：已儲存（' + esc(R(r.savedAt)) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）')) + '</div>' +
+    '<div>成績：<b>' + esc(r.成績 || '—') + (r.成績 ? ' ' + gradeOf(r.成績) : '') + '</b>' + (!has('督導紀錄編輯') ? '' : '　' + (r.content ? '完整督導紀錄：已儲存（' + esc(R(r.savedAt)) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）')) + '</div>' +
     (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
     (has('督導紀錄編輯') ? '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>' : '');
 }
