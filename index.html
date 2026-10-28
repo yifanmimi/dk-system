@@ -1728,7 +1728,7 @@ function fillStatic() {
   const groups = {};
   S.refs.units.forEach(u => { (groups[u.kind || '其他'] = groups[u.kind || '其他'] || []).push(u.name); });
   $('c單位').innerHTML = '<option value="">請選擇</option>' + Object.keys(groups).sort((a, b) => (/管理處/.test(b) ? 1 : 0) - (/管理處/.test(a) ? 1 : 0)).map(g =>
-    '<optgroup label="' + esc(g) + '">' + groups[g].map(n => '<option>' + esc(n) + '</option>').join('') + '</optgroup>').join('');
+    '<optgroup label="' + esc(g) + '">' + groups[g].slice().sort(cmpUnit).map(n => '<option>' + esc(n) + '</option>').join('') + '</optgroup>').join('');
   const unitsUsed = {}; S.cases.forEach(c => unitsUsed[c.單位] = 1);
   $('fUnit').innerHTML = '<option value="">全部單位</option>' + Object.keys(unitsUsed).sort(cmpUnit).map(u => '<option>' + esc(u) + '</option>').join('');
   $('fMonth').innerHTML = '<option value="">全部月份</option>' + Array.from({ length: 12 }, (_, i) => '<option value="' + pad(i + 1) + '">' + (i + 1) + ' 月</option>').join('');
@@ -1849,16 +1849,17 @@ const ST_ORDER = ['已排定', '待登錄結果', '已登錄結果', '已取消'
 S.sort = (() => { try { return JSON.parse(localStorage.getItem('dk_sort_list')) || null; } catch (e) { return null; } })() || { k: '日期', d: -1 };
 if (S.sort.k === '案件編號') S.sort = { k: '日期', d: -1 };   // 案件編號欄已不顯示
 const coll = new Intl.Collator('zh-Hant-TW', { numeric: true });
-/* 單位排序：依「單位清單」的習慣順序，管理處在前、縣市政府在後；清單外的單位（如某縣府下屬局處）排在所屬縣府之後 */
-var UNIT_DEFAULT = ['瑠公管理處', '七星管理處', '北基管理處', '桃園管理處', '石門管理處', '新竹管理處', '苗栗管理處', '臺中管理處', '彰化管理處', '南投管理處', '雲林管理處', '嘉南管理處', '高雄管理處', '屏東管理處', '宜蘭管理處', '花蓮管理處', '臺東管理處',
+/* 單位排序（習慣順序）：管理處依農田水利署順序由宜蘭開始，縣市政府在後；
+   「單位清單」有、但下表沒有的單位接在同類最後；清單外的單位（如某縣府下屬局處）排在所屬縣府之後 */
+var UNIT_DEFAULT = ['宜蘭管理處', '北基管理處', '桃園管理處', '石門管理處', '新竹管理處', '苗栗管理處', '臺中管理處', '南投管理處', '彰化管理處', '雲林管理處', '嘉南管理處', '高雄管理處', '屏東管理處', '臺東管理處', '花蓮管理處', '七星管理處', '瑠公管理處',
   '臺北市政府', '新北市政府', '桃園市政府', '臺中市政府', '臺南市政府', '高雄市政府', '新竹縣政府', '苗栗縣政府', '彰化縣政府', '南投縣政府', '雲林縣政府', '嘉義縣政府', '屏東縣政府', '宜蘭縣政府', '花蓮縣政府', '臺東縣政府', '澎湖縣政府', '金門縣政府', '連江縣政府', '基隆市政府', '新竹市政府', '嘉義市政府'];
 var UNIT_ORDER = null;
 function unitOrder() {
   if (UNIT_ORDER) return UNIT_ORDER;
-  const us = S.refs && S.refs.units && S.refs.units.length ? S.refs.units : null;
-  if (!us) return UNIT_DEFAULT;
-  const isMgmt = u => /管理處$/.test(u.name) || /管理處/.test(u.kind || '');
-  UNIT_ORDER = us.filter(isMgmt).map(u => u.name).concat(us.filter(u => !isMgmt(u)).map(u => u.name));
+  const us = S.refs && S.refs.units && S.refs.units.length ? S.refs.units.map(u => u.name) : [];
+  const isMgmt = n => /管理處$/.test(n);
+  const D = UNIT_DEFAULT, extra = us.filter(n => D.indexOf(n) < 0);
+  UNIT_ORDER = D.filter(isMgmt).concat(extra.filter(isMgmt), D.filter(n => !isMgmt(n)), extra.filter(n => !isMgmt(n)));
   return UNIT_ORDER;
 }
 function unitRank(name) {
@@ -1866,9 +1867,7 @@ function unitRank(name) {
   let i = o.indexOf(name); if (i >= 0) return i;
   let best = -1; o.forEach((n, j) => { if (name.indexOf(n) === 0 && (best < 0 || n.length > o[best].length)) best = j; });
   if (best >= 0) return best + 0.5;
-  // 單位清單沒有的：依內建習慣順序，再不到就排最後（管理處仍在縣市政府前）
-  const k = UNIT_DEFAULT.findIndex(n => name.indexOf(n) === 0);
-  return k >= 0 ? 100 + k + (/管理處$/.test(name) ? 0 : 500) : 1000 + (/管理處$/.test(name) ? 0 : 500);
+  return 1000 + (/管理處$/.test(name) ? 0 : 500);
 }
 function cmpUnit(a, b) { return unitRank(a) - unitRank(b) || String(a).localeCompare(String(b), 'zh-Hant-TW'); }
 window.dkUnitRank = unitRank;   // 督導紀錄分頁共用
