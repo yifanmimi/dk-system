@@ -384,7 +384,7 @@ button:disabled{opacity:.5;cursor:default}
   <section id="v-stat" class="ix hide">
     <div class="card stf">
       <b>年度</b><span class="yrs" id="stYears"></span>
-      <select id="stType"><option value="">全部項目</option></select>
+      <b>項目</b><span class="yrs" id="stTypes"></span>
       <span class="cnt">或日期區間</span><input type="date" id="stFrom" title="起日"><span class="cnt">～</span><input type="date" id="stTo" title="迄日"><button class="b" id="stClr" title="清除日期區間，改用年度">清除</button>
       <select id="stUnit" title="單位：可選全部管理處、全部縣市政府，或單一單位"><option value="">全部單位</option></select>
       <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
@@ -1957,13 +1957,17 @@ function initStatFilters() {
   const opt = (v, t) => '<option value="' + esc(v) + '"' + (v === curU ? ' selected' : '') + '>' + esc(t) + '</option>';
   $('stUnit').innerHTML = opt('', '全部單位') + opt('k:管理處', '全部管理處') + opt('k:縣市政府', '全部縣市政府') +
     ['管理處', '縣市政府'].map(k => '<optgroup label="' + k + '">' + us.filter(u => kindOf(u) === k).map(u => opt('u:' + u, u)).join('') + '</optgroup>').join('');
-  if ($('stType').options.length <= 1) $('stType').innerHTML = '<option value="">全部項目</option>' + (S.refs ? S.refs.types : []).map(t => '<option>' + t + '</option>').join('');
+  // 項目（可複選；預設全選）
+  const types = [...new Set((S.refs ? S.refs.types : []).concat(S.stat.cases.map(c => c[SI.type])).filter(Boolean))];
+  const curT = S.statTypes || types;
+  $('stTypes').innerHTML = types.map(t => '<label><input type="checkbox" value="' + esc(t) + '"' + (curT.indexOf(t) >= 0 ? ' checked' : '') + '> ' + esc(t) + '</label>').join('');
   $('stTabCom').classList.toggle('hide', !!S.stat.committeeHidden);
   showStatTab();
   renderStats();
 }
 $('stYears').addEventListener('change', () => { S.statYears = [...$('stYears').querySelectorAll('input:checked')].map(i => +i.value); renderStats(); });
-$('stType').onchange = $('stUnit').onchange = () => renderStats();
+$('stUnit').onchange = () => renderStats();
+$('stTypes').addEventListener('change', () => { S.statTypes = [...$('stTypes').querySelectorAll('input:checked')].map(i => i.value); renderStats(); });
 /* 統計分頁：一次只顯示一項統計（記住上次選的分頁） */
 function showStatTab(n) {
   if (n) { try { localStorage.setItem('dk_stat_tab', n); } catch (e) { } }
@@ -1978,11 +1982,13 @@ $('stClr').onclick = () => { $('stFrom').value = ''; $('stTo').value = ''; rende
 /* 篩選：有填日期區間就依日期（日期未定的案件不列入），否則依勾選的年度 */
 function statFilter() {
   const sel = $('stUnit').value, kd = sel.indexOf('k:') === 0 ? sel.slice(2) : '', un = sel.indexOf('u:') === 0 ? sel.slice(2) : '';
-  const ys = S.statYears || [], ty = $('stType').value, from = $('stFrom').value, to = $('stTo').value;
+  const allT = [...$('stTypes').querySelectorAll('input')].map(i => i.value), selT = [...$('stTypes').querySelectorAll('input:checked')].map(i => i.value);
+  const ty = selT.length === allT.length ? [] : selT, noneT = !selT.length;   // 全選＝不篩選
+  const ys = S.statYears || [], from = $('stFrom').value, to = $('stTo').value;
   const range = !!(from || to);
   $('stYears').style.opacity = range ? .4 : 1;
   const okDate = c => range ? !!c[SI.date] && (!from || c[SI.date] >= from) && (!to || c[SI.date] <= to) : ys.indexOf(+c[SI.y]) >= 0;
-  return { ys, ty, kd, un, from, to, range, okCase: c => okDate(c) && (!ty || c[SI.type] === ty) && (!kd || kindOf(c[SI.unit]) === kd) && (!un || c[SI.unit] === un) };
+  return { ys, ty, kd, un, from, to, range, okCase: c => !noneT && okDate(c) && (!ty.length || ty.indexOf(c[SI.type]) >= 0) && (!kd || kindOf(c[SI.unit]) === kd) && (!un || c[SI.unit] === un) };
 }
 function tiles(id, arr) { $(id).innerHTML = arr.map(([l, v]) => '<div class="tile"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join(''); }
 function bars(id, idx, labels, vals, unit) {
@@ -2019,7 +2025,7 @@ function renderStats() {
   const done = live.filter(c => c[SI.st] === '待登錄結果' || c[SI.st] === '已登錄結果');
   const res = live.filter(c => c[SI.st] === '已登錄結果');
   const scored = live.filter(c => c[SI.score] !== '');
-  $('stInfo').textContent = '資料時間：' + (S.stat.loadedAt || '') + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + (F.range ? (F.from || '最早') + '～' + (F.to || '最新') : F.ys.join('、') + ' 年度') + (F.un ? '｜' + F.un : F.kd ? '｜全部' + F.kd : '');
+  $('stInfo').textContent = '資料時間：' + (S.stat.loadedAt || '') + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + (F.range ? (F.from || '最早') + '～' + (F.to || '最新') : F.ys.join('、') + ' 年度') + (F.ty.length ? '｜' + F.ty.join('、') : '') + (F.un ? '｜' + F.un : F.kd ? '｜全部' + F.kd : '');
   // 1. 執行概況
   tiles('stTiles1', [['排定件數（不含取消）', live.length], ['已辦理', done.length], ['已登錄結果', res.length], ['待登錄結果', done.length - res.length], ['已取消', all.length - live.length]]);
   const types = [...new Set(all.map(c => c[SI.type]))];
@@ -2085,7 +2091,7 @@ $('tbCode').addEventListener('click', async e => {
   $('stMTitle').textContent = code + '　' + String(S.stat.codes[code] || '').replace(/□/g, '').slice(0, 40);
   $('stMTable').innerHTML = '<tr><td class="cnt">讀取中…</td></tr>'; $('stMask').classList.remove('hide');
   try {
-    const list = await api('statsCode', { code: code, years: F.ys, type: F.ty, kind: F.kd, unit: F.un, from: F.from, to: F.to });
+    const list = await api('statsCode', { code: code, years: F.ys, types: F.ty, kind: F.kd, unit: F.un, from: F.from, to: F.to });
     table('stMTable', ['日期', '單位', '工程名稱', '缺失紀錄'], list.map(r => [r.日期, esc(r.單位), esc(r.工程名稱), esc(r.缺失紀錄)]));
   } catch (err) { $('stMTable').innerHTML = '<tr><td class="cnt">讀取失敗：' + esc(errMsg(err)) + '</td></tr>'; }
 });
