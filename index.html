@@ -198,10 +198,11 @@ button:disabled{opacity:.5;cursor:default}
 .dn{font-size:11px;color:var(--mute);display:inline-block;margin-bottom:1px}
 .more{display:block;font-size:11px;color:var(--pri);cursor:pointer;padding:0 2px}.cell:not(.open) .chip.x{display:none}
 .calhead h2{font-size:16px}
-.grid .chip{display:block;font-size:11.5px;line-height:1.3;padding:1px 4px;margin:1px 0;border-radius:4px;color:#fff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid .chip,.undated .chip{display:block;font-size:11.5px;line-height:1.3;padding:1px 4px;margin:1px 0;border-radius:4px;color:#fff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid .chip.c{background:#d5dbe1!important;color:#6b7785;text-decoration:line-through}
 .mk{display:inline-block;font-size:10.5px;padding:0 4px;margin:1px 2px 0 0;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk.r{background:#e6f4ea;color:#2e7d4f}.mk.i{background:#fdecea;color:#b03a2e}
+.undated{border:1px dashed #c9d0d8;border-radius:6px;padding:6px 8px;margin-bottom:8px;background:#fff;font-size:12px}.undated b{color:var(--warn);margin-right:6px}.undated .grid-chip{display:inline-block;max-width:260px;vertical-align:middle;margin:2px 4px 2px 0}
 .legend{display:flex;gap:10px;font-size:12px;color:var(--mute);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 /* 表格 */
@@ -306,6 +307,7 @@ button:disabled{opacity:.5;cursor:default}
       <label class="cnt"><input type="checkbox" id="chkCancel"> 顯示已取消</label>
       <label class="cnt"><input type="checkbox" id="chkDue" checked> 顯示期限</label>
     </div>
+    <div id="undated" class="undated hide"></div>
     <div class="grid" id="grid"></div>
     <div class="legend" id="legend" style="margin-top:8px"></div>
   </section>
@@ -322,7 +324,7 @@ button:disabled{opacity:.5;cursor:default}
       <button class="b" id="btnCsv">下載 CSV</button>
     </div>
     <div class="tbl"><table><thead><tr>
-      <th data-k="案件編號">案件編號</th><th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="工作人員">工作人員</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
+      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="工作人員">工作人員</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
     </tr></thead><tbody id="listBody"></tbody></table></div>
   </section>
 
@@ -364,6 +366,7 @@ button:disabled{opacity:.5;cursor:default}
     <div class="card stf">
       <b>年度</b><span class="yrs" id="stYears"></span>
       <select id="stType"><option value="">全部項目</option></select>
+      <span class="cnt">或日期區間</span><input type="date" id="stFrom" title="起日"><span class="cnt">～</span><input type="date" id="stTo" title="迄日"><button class="b" id="stClr" title="清除日期區間，改用年度">清除</button>
       <select id="stKind"><option value="">全部單位別</option><option>管理處</option><option>縣市政府</option></select>
       <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
     </div>
@@ -759,9 +762,9 @@ function renderCases(){
     (!q || [c['案件編號'],c['工程名稱'],c['單位'],c['委員1'],c['委員2'],c['領隊'],c._date].join(' ').toLowerCase().includes(q)));
   if(!list.length){ $('caseList').innerHTML='<div class="loading">沒有符合的案件</div>'; return; }
   list.sort(cmpCase);
-  const TH=[['案件編號','編號'],['_date','日期'],['項目','項目'],['單位','單位'],['工程名稱','工程名稱'],['委員','委員'],['成績','成績'],['缺失數','缺失']];
+  const TH=[['_date','日期'],['項目','項目'],['單位','單位'],['工程名稱','工程名稱'],['委員','委員'],['成績','成績'],['缺失數','缺失']];
   $('caseList').innerHTML = `<table><thead><tr>${TH.map(([k,l])=>`<th data-k="${k}" class="${S.sort.k===k?'sorted':''}" title="點選排序">${l}${S.sort.k===k?`<span class="ar">${S.sort.d<0?'▼':'▲'}</span>`:''}</th>`).join('')}</tr></thead><tbody>${
-    list.map(c=>`<tr class="pick ${S.sel&&S.sel._i===c._i?'sel':''}" data-i="${c._i}"><td>${esc(c['案件編號'])}</td><td>${esc(c._date)}</td><td><span class="badge">${esc(c['項目'])}</span></td><td>${esc(c['單位'])}</td><td>${esc(c['工程名稱'])}</td><td>${esc([c['委員1'],c['委員2']].filter(Boolean).join('、'))}</td><td>${esc(c['成績'])}</td><td>${c['缺失未建立']?'<span class="badge err">未建立</span>':esc(c['缺失數'])}</td></tr>`).join('')
+    list.map(c=>`<tr class="pick ${S.sel&&S.sel._i===c._i?'sel':''}" data-i="${c._i}"><td>${c._date?esc(c._date):'<span class="muted">日期未定</span>'}</td><td><span class="badge">${esc(c['項目'])}</span></td><td>${esc(c['單位'])}</td><td>${esc(c['工程名稱'])}</td><td>${esc([c['委員1'],c['委員2']].filter(Boolean).join('、'))}</td><td>${esc(c['成績'])}</td><td>${c['缺失未建立']?'<span class="badge err">未建立</span>':esc(c['缺失數'])}</td></tr>`).join('')
   }</tbody></table>`;
   $('caseList').querySelectorAll('tr.pick').forEach(tr=>tr.onclick=()=>selectCase(+tr.dataset.i));
   $('caseList').querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
@@ -793,7 +796,7 @@ function selectCase(i){
     '督導分數': c['成績']||'', '等級':'', '檢驗拆驗':'無。'
   };
   if(S.xlsxRows) applyXlsx();
-  $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b>　<span class="muted">${esc(c._date)}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc(S.base['督導委員'])}｜領隊：${esc(c['領隊'])}</span>${Object.keys(d).length?'':'<br><span class="badge warn">清單連結查無此案的預算、廠商資料，請手動補填</span>'}</div>`;
+  $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b>　<span class="muted">${esc(c._date||'日期未定')}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc(S.base['督導委員'])}｜領隊：${esc(c['領隊'])}</span>${Object.keys(d).length?'':'<br><span class="badge warn">清單連結查無此案的預算、廠商資料，請手動補填</span>'}</div>`;
   renderCases(); renderBase(); renderFiles(); renderItems(); renderPreview();
   loadSaved(c);
 }
@@ -1555,7 +1558,7 @@ if(!window.REC_EMBED) recStart();
     <header><h3 id="dlgTitle">新增行程</h3><span class="sp"></span><span id="dlgStatus"></span></header>
     <div class="bd">
       <div class="fg">
-        <label class="req">日期</label><input type="date" id="c日期">
+        <label class="req">日期</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input type="date" id="c日期" style="flex:1"><select id="c預定月份" class="hide" style="flex:1"></select><label style="white-space:nowrap;font-size:13px"><input type="checkbox" id="cUndated"> 日期未定</label></div>
         <label class="req">項目</label><select id="c項目"></select>
         <label class="req">單位</label><select id="c單位"></select>
         <label>工作人員</label><input id="c工作人員" list="dlStaff">
@@ -1614,6 +1617,8 @@ const TYPE_COLOR = { '代部查核': 'var(--t1)', '本部查核': 'var(--t2)', '
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const canEdit = () => S.me && (S.me.role === '管理者' || S.me.role === '承辦');
+/** 日期顯示：日期未定者顯示「未定（11 月）」 */
+const dateText = c => c.日期 || ('<span class="soon">日期未定</span>' + (c.預定月份 ? '（' + (+c.預定月份.slice(5, 7)) + ' 月）' : ''));
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const pad = n => ('0' + n).slice(-2);
 
@@ -1709,7 +1714,7 @@ const CASE_ID = (new URLSearchParams(location.search).get('id') || '').replace(/
 setView(S.view);
 if (S.view === 'rec' && CASE_ID) REC.open(CASE_ID);
 /* 督導紀錄頁儲存結果後，重新讀取行程資料（狀態、成績會更新） */
-window.REC_onSaved = () => { boot(S.year); };
+window.REC_onSaved = id => { if (S.resMemo) delete S.resMemo[id]; boot(S.year); };
 $('selYear').onchange = () => { S.month = null; boot($('selYear').value); };
 function render() {
   if (S.view === 'cal') renderCal();
@@ -1762,7 +1767,13 @@ function renderCal() {
     h += '<div class="' + cls.join(' ') + '" data-date="' + ds + '">' + inner + '</div>';
   }
   $('grid').innerHTML = h;
+  // 日期未定：本月預定、或未指定月份者列在月曆上方
+  const und = S.cases.filter(c => !c.日期 && c.狀態 !== '已作廢' && (c.狀態 !== '已取消' || showC) && (!c.預定月份 || c.預定月份 === S.month));
+  $('undated').classList.toggle('hide', !und.length);
+  $('undated').innerHTML = '<b>日期未定</b>' + und.map(c => '<span class="grid-chip"><span class="chip' + (c.狀態 === '已取消' ? ' c' : '') + '" data-id="' + c.案件編號 + '" style="background:' + (TYPE_COLOR[c.項目] || '#888') + '">' +
+    esc(c.單位.replace(/管理處$/, '') + '｜' + c.工程名稱) + (c.預定月份 ? '' : '（月份未定）') + '</span></span>').join('');
 }
+$('undated').addEventListener('click', e => { const ch = e.target.closest('.chip'); if (ch) openCase(ch.dataset.id); });
 $('grid').addEventListener('click', e => {
   const more = e.target.closest('[data-more]');
   if (more) { const cell = more.closest('.cell'); cell.classList.toggle('open'); more.textContent = cell.classList.contains('open') ? '收合' : '+' + cell.querySelectorAll('.chip.x').length + ' 件'; return; }
@@ -1780,7 +1791,7 @@ $('chkCancel').onchange = $('chkDue').onchange = renderCal;
 /* ===================== 清單 ===================== */
 function filtered() {
   const mo = $('fMonth').value, ty = $('fType').value, un = $('fUnit').value, st = $('fStatus').value, k = $('fKey').value.trim().toLowerCase();
-  return S.cases.filter(c => (st === '已作廢' || c.狀態 !== '已作廢') && (!mo || c.日期.slice(5, 7) === mo) && (!ty || c.項目 === ty) && (!un || c.單位 === un) && (!st || c.狀態 === st) &&
+  return S.cases.filter(c => (st === '已作廢' || c.狀態 !== '已作廢') && (!mo || (c.日期 || c.預定月份 || '').slice(5, 7) === mo) && (!ty || c.項目 === ty) && (!un || c.單位 === un) && (!st || c.狀態 === st) &&
     (!k || [c.案件編號, c.工程名稱, c.委員1, c.委員2, c.領隊, c.工作人員, c.單位].join(' ').toLowerCase().indexOf(k) >= 0))
     .sort(cmpCase);
 }
@@ -1791,6 +1802,7 @@ function filtered() {
 const DESC_FIRST = ['案件編號', '日期', '紀錄表期限', '報部改善期限'];
 const ST_ORDER = ['已排定', '待登錄結果', '已登錄結果', '已取消', '已作廢'];
 S.sort = (() => { try { return JSON.parse(localStorage.getItem('dk_sort_list')) || null; } catch (e) { return null; } })() || { k: '日期', d: -1 };
+if (S.sort.k === '案件編號') S.sort = { k: '日期', d: -1 };   // 案件編號欄已不顯示
 const coll = new Intl.Collator('zh-Hant-TW', { numeric: true });
 function sortVal(c, k) { return k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
 function cmpCase(a, b) {
@@ -1819,16 +1831,16 @@ function renderList() {
   });
   $('listCnt').textContent = '共 ' + list.length + ' 筆';
   $('listBody').innerHTML = list.map(c => '<tr data-id="' + c.案件編號 + '"' + (c.狀態 === '已取消' || c.狀態 === '已作廢' ? ' class="cx"' : '') + '>' +
-    '<td>' + c.案件編號 + '</td><td>' + c.日期 + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
+    '<td>' + dateText(c) + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
     '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td><td>' + esc(c.工作人員) + '</td>' +
     '<td><span class="st ' + c.狀態 + '">' + c.狀態 + '</span></td><td>' + (c.紀錄表期限 || '') + '</td><td>' + (c.報部改善期限 || '') + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
-    '<tr><td colspan="11" class="cnt">沒有符合條件的案件</td></tr>';
+    '<tr><td colspan="10" class="cnt">沒有符合條件的案件</td></tr>';
 }
 ['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
 $('fKey').oninput = renderList;
 $('listBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id); });
 $('btnCsv').onclick = () => {
-  const cols = ['案件編號', '日期', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數'];
+  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '缺失數'];
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const csv = '﻿' + [cols.map(q).join(',')].concat(filtered().map(c => cols.map(k => q(c[k] === true ? '是' : c[k])).join(','))).join('\r\n');
   const a = document.createElement('a');
@@ -1838,8 +1850,8 @@ $('btnCsv').onclick = () => {
 };
 
 /* ===================== 統計 ===================== */
-// 案件欄位索引：[編號, 年度, 月, 項目, 單位, 單位別, 狀態, 成績, 缺失數, 委員1, 委員2]
-const SI = { id: 0, y: 1, m: 2, type: 3, unit: 4, kind: 5, st: 6, score: 7, def: 8, c1: 9, c2: 10 };
+// 案件欄位索引：[編號, 年度, 月, 項目, 單位, 單位別, 狀態, 成績, 缺失數, 委員1, 委員2, 日期]；缺失：[案件, 代碼, 等級, 筆數, 扣點]
+const SI = { id: 0, y: 1, m: 2, type: 3, unit: 4, kind: 5, st: 6, score: 7, def: 8, c1: 9, c2: 10, date: 11 };
 const SEC_NAME = { A1: '主辦機關／PCM（4.01）', A2: '監造單位（4.02）', B: '承攬廠商（4.03）', W1: '施工品質（5.01–5.09）', W2: '材料設備（5.10–5.13）', W3: '施工安全衛生（5.14–5.17）', P: '施工進度（6.xx）', D: '規劃設計（7.xx）', O: '其他／未填代碼' };
 function secOf(code) {
   const m = String(code || '').match(/^(\d)\.(\d{2})/); if (!m) return 'O';
@@ -1855,14 +1867,14 @@ const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
 async function loadStats() {
   if (!S.stat) {
-    try { S.stat = JSON.parse(localStorage.getItem('dk_stat_v1') || 'null'); } catch (e) { }
+    try { S.stat = JSON.parse(localStorage.getItem('dk_stat_v2') || 'null'); } catch (e) { }
     if (S.stat) initStatFilters();
   }
   if (S._statFresh) return renderStats();
   try {
     const d = await api('stats', {});
     S.stat = d; S._statFresh = true;
-    try { localStorage.setItem('dk_stat_v1', JSON.stringify(Object.assign({}, d, { cases: d.cases.map(c => c.slice(0, 9).concat(['', ''])) }))); } catch (e) { }   // 本機暫存不含委員
+    try { localStorage.setItem('dk_stat_v2', JSON.stringify(Object.assign({}, d, { cases: d.cases.map(c => c.slice(0, 9).concat(['', '', c[11]])) }))); } catch (e) { }   // 本機暫存不含委員
     initStatFilters();
   } catch (e) { $('stInfo').textContent = '讀取失敗：' + errMsg(e); }
 }
@@ -1877,9 +1889,15 @@ function initStatFilters() {
 }
 $('stYears').addEventListener('change', () => { S.statYears = [...$('stYears').querySelectorAll('input:checked')].map(i => +i.value); renderStats(); });
 $('stType').onchange = $('stKind').onchange = () => renderStats();
+$('stFrom').onchange = $('stTo').onchange = () => renderStats();
+$('stClr').onclick = () => { $('stFrom').value = ''; $('stTo').value = ''; renderStats(); };
+/* 篩選：有填日期區間就依日期（日期未定的案件不列入），否則依勾選的年度 */
 function statFilter() {
-  const ys = S.statYears || [], ty = $('stType').value, kd = $('stKind').value;
-  return { ys, ty, kd, ok: (y, t, u) => ys.indexOf(+y) >= 0 && (!ty || t === ty) && (!kd || kindOf(u) === kd) };
+  const ys = S.statYears || [], ty = $('stType').value, kd = $('stKind').value, from = $('stFrom').value, to = $('stTo').value;
+  const range = !!(from || to);
+  $('stYears').style.opacity = range ? .4 : 1;
+  const okDate = c => range ? !!c[SI.date] && (!from || c[SI.date] >= from) && (!to || c[SI.date] <= to) : ys.indexOf(+c[SI.y]) >= 0;
+  return { ys, ty, kd, from, to, range, okCase: c => okDate(c) && (!ty || c[SI.type] === ty) && (!kd || kindOf(c[SI.unit]) === kd) };
 }
 function tiles(id, arr) { $(id).innerHTML = arr.map(([l, v]) => '<div class="tile"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join(''); }
 function bars(id, idx, labels, vals, unit) {
@@ -1910,12 +1928,12 @@ document.querySelector('#v-stat').addEventListener('click', e => {
 function renderStats() {
   if (!S.stat) return;
   const F = statFilter();
-  const all = S.stat.cases.filter(c => F.ok(c[SI.y], c[SI.type], c[SI.unit]));
+  const all = S.stat.cases.filter(F.okCase);
   const live = all.filter(c => c[SI.st] !== '已取消');
   const done = live.filter(c => c[SI.st] === '待登錄結果' || c[SI.st] === '已登錄結果');
   const res = live.filter(c => c[SI.st] === '已登錄結果');
   const scored = live.filter(c => c[SI.score] !== '');
-  $('stInfo').textContent = '資料時間：' + (S.stat.loadedAt || '') + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + F.ys.join('、') + ' 年度';
+  $('stInfo').textContent = '資料時間：' + (S.stat.loadedAt || '') + (S._statFresh ? '' : '（暫存，更新中…）') + '｜' + (F.range ? (F.from || '最早') + '～' + (F.to || '最新') : F.ys.join('、') + ' 年度');
   // 1. 執行概況
   tiles('stTiles1', [['排定件數（不含取消）', live.length], ['已辦理', done.length], ['已登錄結果', res.length], ['待登錄結果', done.length - res.length], ['已取消', all.length - live.length]]);
   const types = [...new Set(all.map(c => c[SI.type]))];
@@ -1926,7 +1944,7 @@ function renderStats() {
   }), { num: [1, 2, 3, 4, 5] });
   const mon = Array.from({ length: 12 }, (_, i) => live.filter(c => c[SI.m] === i + 1).length);
   bars('stMonth', 'stMonthX', Array.from({ length: 12 }, (_, i) => (i + 1) + '月'), mon, '件');
-  if (F.ys.length > 1) {
+  if (F.ys.length > 1 && !F.range) {
     $('stYearBox').innerHTML = '<div class="cnt" style="margin:12px 0 4px">年度比較</div><table class="st" id="tbYear"></table>';
     table('tbYear', ['年度', '排定', '已登錄結果', '平均成績', '甲等比例', '平均缺失數'], F.ys.slice().sort().map(y => {
       const l = live.filter(c => c[SI.y] === y), sc = l.filter(c => c[SI.score] !== '').map(c => c[SI.score]), dd = l.filter(c => c[SI.def] > 0);
@@ -1949,15 +1967,17 @@ function renderStats() {
       s2.filter(x => x >= 70 && x < 80).length, s2.filter(x => x < 70).length, fmt(avg(dd.map(c => c[SI.def])), 1), nodef];
   }).sort((a, b) => (parseFloat(b[4]) || 0) - (parseFloat(a[4]) || 0)), { num: [2, 3, 4, 5, 6, 7, 8, 9, 10], sort: true });
   // 4. 缺失分析
-  const D = S.stat.defects.filter(d => F.ok(d[0], d[1], d[2]));
-  const tot = D.reduce((a, d) => a + d[5], 0);
+  const byId = {}; all.forEach(c => { byId[c[SI.id]] = c; });
+  // 缺失列 [案件, 代碼, 等級, 筆數, 扣點]；只取篩選後案件的缺失
+  const D = S.stat.defects.filter(d => byId[d[0]] && byId[d[0]][SI.st] !== '已取消');
+  const tot = D.reduce((a, d) => a + d[3], 0);
   const withDef = live.filter(c => c[SI.def] > 0).length;
-  tiles('stTiles4', [['缺失總筆數', tot], ['已建立缺失案件', withDef], ['平均每案缺失', fmt(withDef ? tot / withDef : NaN, 1)], ['扣點合計', D.reduce((a, d) => a + d[6], 0)]]);
-  const bySec = {}; D.forEach(d => { const k = secOf(d[3]); bySec[k] = (bySec[k] || 0) + d[5]; });
+  tiles('stTiles4', [['缺失總筆數', tot], ['已建立缺失案件', withDef], ['平均每案缺失', fmt(withDef ? tot / withDef : NaN, 1)], ['扣點合計', D.reduce((a, d) => a + d[4], 0)]]);
+  const bySec = {}; D.forEach(d => { const k = secOf(d[1]); bySec[k] = (bySec[k] || 0) + d[3]; });
   table('tbSec', ['段落', '筆數', '比例'], Object.keys(SEC_NAME).filter(k => bySec[k]).map(k => [SEC_NAME[k], bySec[k], '<span class="hbar" style="width:' + (bySec[k] / tot * 120) + 'px"></span>' + pct(bySec[k], tot)]), { num: [1] });
-  const byLv = {}; D.forEach(d => { const k = d[4] || '未填'; byLv[k] = (byLv[k] || 0) + d[5]; });
+  const byLv = {}; D.forEach(d => { const k = d[2] || '未填'; byLv[k] = (byLv[k] || 0) + d[3]; });
   table('tbLevel', ['等級', '筆數', '比例'], ['L', 'M', 'S', '未填'].filter(k => byLv[k]).map(k => [{ L: 'L（輕）', M: 'M（中）', S: 'S（重）', 未填: '未填' }[k], byLv[k], pct(byLv[k], tot)]), { num: [1, 2] });
-  const byCode = {}; D.forEach(d => { if (!d[3]) return; const o = byCode[d[3]] = byCode[d[3]] || { n: 0, L: 0, M: 0, S: 0 }; o.n += d[5]; if (o[d[4]] != null) o[d[4]] += d[5]; });
+  const byCode = {}; D.forEach(d => { if (!d[1]) return; const o = byCode[d[1]] = byCode[d[1]] || { n: 0, L: 0, M: 0, S: 0 }; o.n += d[3]; if (o[d[2]] != null) o[d[2]] += d[3]; });
   const top = Object.keys(byCode).sort((a, b) => byCode[b].n - byCode[a].n).slice(0, 20);
   table('tbCode', ['名次', '代碼', '內容', '段落', '筆數', '比例', 'L', 'M', 'S'], top.map((k, i) => {
     const r = [i + 1, k, esc(String(S.stat.codes[k] || '').replace(/□/g, '').slice(0, 60)), (SEC_NAME[secOf(k)] || '').replace(/（.*）/, ''), byCode[k].n, pct(byCode[k].n, tot), byCode[k].L, byCode[k].M, byCode[k].S];
@@ -1979,8 +1999,8 @@ $('tbCode').addEventListener('click', async e => {
   $('stMTitle').textContent = code + '　' + String(S.stat.codes[code] || '').replace(/□/g, '').slice(0, 40);
   $('stMTable').innerHTML = '<tr><td class="cnt">讀取中…</td></tr>'; $('stMask').classList.remove('hide');
   try {
-    const list = await api('statsCode', { code: code, years: F.ys, type: F.ty, kind: F.kd });
-    table('stMTable', ['案件編號', '日期', '單位', '工程名稱', '缺失紀錄'], list.map(r => [r.案件編號, r.日期, esc(r.單位), esc(r.工程名稱), esc(r.缺失紀錄)]));
+    const list = await api('statsCode', { code: code, years: F.ys, type: F.ty, kind: F.kd, from: F.from, to: F.to });
+    table('stMTable', ['日期', '單位', '工程名稱', '缺失紀錄'], list.map(r => [r.日期, esc(r.單位), esc(r.工程名稱), esc(r.缺失紀錄)]));
   } catch (err) { $('stMTable').innerHTML = '<tr><td class="cnt">讀取失敗：' + esc(errMsg(err)) + '</td></tr>'; }
 });
 $('stMClose').onclick = () => $('stMask').classList.add('hide');
@@ -1994,7 +2014,7 @@ $('v-stat').addEventListener('click', e => {
   const csv = '﻿' + [t._data.head.map(q).join(',')].concat(t._data.rows.map(r => r.map(q).join(','))).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = '統計_' + b.closest('.card').querySelector('h3').firstChild.textContent.trim() + '_' + (S.statYears || []).join('-') + '.csv'; a.target = '_self';
+  const F2 = statFilter(); a.download = '統計_' + b.closest('.card').querySelector('h3').firstChild.textContent.trim() + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + '.csv'; a.target = '_self';
   document.body.appendChild(a); a.click(); a.remove();
 });
 
@@ -2007,13 +2027,13 @@ function renderDue() {
   const item = (c, ds) => {
     const n = daysFrom(ds), cls = n < 0 ? 'late' : n <= 3 ? 'soon' : '';
     return '<div class="it" data-id="' + c.案件編號 + '"><span class="d ' + cls + '">' + ds + '（' + (n < 0 ? '逾期 ' + (-n) + ' 天' : n === 0 ? '今天' : '剩 ' + n + ' 天') + '）</span> ' +
-      esc(c.單位) + '<br><span class="cnt">' + c.案件編號 + '｜' + esc(c.項目) + '｜' + esc(c.工程名稱) + '（' + c.日期 + '）</span></div>';
+      esc(c.單位) + '<br><span class="cnt">' + esc(c.項目) + '｜' + esc(c.工程名稱) + '（' + dateText(c) + '）</span></div>';
   };
   $('dueRec').innerHTML = rec.map(c => item(c, c.紀錄表期限)).join('') || '<p class="cnt">近期沒有紀錄表期限</p>';
   $('dueImp').innerHTML = imp.map(c => item(c, c.報部改善期限)).join('') || '<p class="cnt">沒有未完成的改善期限</p>';
   const pend = live.filter(c => c.狀態 === '待登錄結果').sort((a, b) => a.日期 < b.日期 ? -1 : 1);
   $('duePend').innerHTML = pend.map(c => '<div class="it" data-id="' + c.案件編號 + '"><span class="d">' + c.日期 + '</span> ' + esc(c.單位) +
-    '<br><span class="cnt">' + c.案件編號 + '｜' + esc(c.項目) + '｜' + esc(c.工程名稱) + '</span></div>').join('') || '<p class="cnt">沒有待登錄結果的案件</p>';
+    '<br><span class="cnt">' + esc(c.項目) + '｜' + esc(c.工程名稱) + '</span></div>').join('') || '<p class="cnt">沒有待登錄結果的案件</p>';
 }
 $('v-due').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) openCase(it.dataset.id); });
 
@@ -2023,11 +2043,18 @@ function openCase(id, date) {
   const c = id ? S.cases.find(x => x.案件編號 === id) : null;
   S.editing = c;
   const ro = !canEdit();
-  $('dlgTitle').textContent = c ? c.案件編號 + '　' + c.工程名稱 : '新增行程';
+  $('dlgTitle').textContent = c ? c.工程名稱 : '新增行程';
   $('dlgStatus').innerHTML = c ? '<span class="st ' + c.狀態 + '">' + c.狀態 + '</span>' + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
   FIELDS.forEach(f => { $('c' + f).value = c ? (c[f] || '') : ''; $('c' + f).disabled = ro; });
   $('c改善完成').checked = !!(c && c.改善完成 === true); $('c改善完成').disabled = ro;
   if (!c && date) $('c日期').value = date;
+  // 日期未定（預定月份選單：該年度 1～12 月）
+  const yy = +(c ? c.年度 : S.year) + 1911;
+  $('c預定月份').innerHTML = '<option value="">月份未定</option>' + Array.from({ length: 12 }, (_, i) => { const v = yy + '-' + pad(i + 1); return '<option value="' + v + '">' + (i + 1) + ' 月（預定）</option>'; }).join('');
+  const und = !!(c && !c.日期);
+  $('cUndated').checked = und; $('cUndated').disabled = ro;
+  $('c預定月份').value = und ? (c.預定月份 || '') : ''; $('c預定月份').disabled = ro;
+  syncUndated();
   ['dlgWarn', 'dlgErr', 'cancelBox', 'voidBox', 'btnForce'].forEach(x => $(x).classList.add('hide'));
   const off = !!(c && (c.狀態 === '已取消' || c.狀態 === '已作廢'));
   $('btnSave').classList.toggle('hide', ro || off);
@@ -2038,7 +2065,7 @@ function openCase(id, date) {
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
-  if (hasRes) $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）';
+  if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
   if (!c) setTimeout(() => $('c日期').focus(), 50);
@@ -2088,10 +2115,15 @@ function calcDue() {
   else $('calcImp').textContent = '—';
 }
 ['c日期', 'c項目', 'c報部改善期限'].forEach(id => $(id).addEventListener('change', calcDue));
+function syncUndated() { const u = $('cUndated').checked; $('c日期').classList.toggle('hide', u); $('c預定月份').classList.toggle('hide', !u); if (u) $('c日期').value = ''; calcDue(); }
+$('cUndated').addEventListener('change', syncUndated);
 
 function formData() {
   const o = {};
   FIELDS.forEach(f => o[f] = $('c' + f).value.trim());
+  // 日期未定：不送日期，改送預定月份（可空白）與年度
+  if ($('cUndated').checked) { o.日期 = ''; o.預定月份 = $('c預定月份').value; o.年度 = S.editing ? S.editing.年度 : S.year; }
+  else o.預定月份 = '';
   o.改善完成 = $('c改善完成').checked;
   if (S.editing) { o.案件編號 = S.editing.案件編號; o._ver = S.editing.修改時間; }
   return o;
@@ -2099,7 +2131,7 @@ function formData() {
 async function save(force) {
   const o = formData();
   const miss = [];
-  if (!o.日期) miss.push('日期'); if (!o.項目) miss.push('項目'); if (!o.單位) miss.push('單位'); if (!o.工程名稱) miss.push('工程名稱');
+  if (!o.日期 && !$('cUndated').checked) miss.push('日期（或勾選日期未定）'); if (!o.項目) miss.push('項目'); if (!o.單位) miss.push('單位'); if (!o.工程名稱) miss.push('工程名稱');
   if (miss.length) return showErr('請填寫：' + miss.join('、'));
   $('btnSave').disabled = $('btnForce').disabled = true;
   loading(true, '儲存中…');
@@ -2157,20 +2189,18 @@ $('btnRestore').onclick = async () => {
   try { const r = await api('restoreCase', { id: S.editing.案件編號 }); upsert(r.case); toast('已還原 ' + r.case.案件編號); closeDlg(); render(); }
   catch (e) { showErr(errMsg(e)); } finally { loading(false); }
 };
-/* 督導結果：成績、缺失清單；完整紀錄可到「督導紀錄」分頁查閱、下載 */
-$('resBox').addEventListener('toggle', async () => {
-  if (!$('resBox').open || !S.editing) return;
-  const id = S.editing.案件編號;
-  try {
-    const r = await api('djRecord', { id: id });
-    if (!S.editing || S.editing.案件編號 !== id) return;
-    const lv = { L: '輕', M: '中', S: '重' };
-    $('resList').innerHTML =
-      '<div>成績：<b>' + esc(r.成績 || '—') + '</b>　' + (r.content ? '完整督導紀錄：已儲存（' + esc(r.savedAt) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）') + '</div>' +
-      (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
-      '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>';
-  } catch (e) { $('resList').textContent = '讀取失敗：' + errMsg(e); }
-});
+/* 督導結果：開啟對話框時就先在背景讀取（同一案件讀過就直接用），展開時立即顯示 */
+S.resMemo = {};
+function loadRes(id) {
+  if (!S.resMemo[id]) S.resMemo[id] = api('djRecord', { id: id }).catch(e => { delete S.resMemo[id]; throw e; });
+  S.resMemo[id].then(r => { if (S.editing && S.editing.案件編號 === id) showRes(r); }, e => { if (S.editing && S.editing.案件編號 === id) $('resList').textContent = '讀取失敗：' + errMsg(e); });
+}
+function showRes(r) {
+  $('resList').innerHTML =
+    '<div>成績：<b>' + esc(r.成績 || '—') + '</b>　' + (r.content ? '完整督導紀錄：已儲存（' + esc(r.savedAt) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）') + '</div>' +
+    (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
+    '<div class="cnt">按下方「督導紀錄 →」可查閱完整內容、下載 .odt 或修改。</div>';
+}
 $('logBox').addEventListener('toggle', async () => {
   if (!$('logBox').open || !S.editing) return;
   try {
