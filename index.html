@@ -282,7 +282,7 @@ button:disabled{opacity:.5;cursor:default}
 .cinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;font-size:13px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:8px 10px}
 .cinfo > div{display:flex;gap:6px;align-items:center;min-width:0}.cinfo b{font-weight:500;color:var(--mute);white-space:nowrap;flex:none;width:6.5em}
 .cinfo input{flex:1;min-width:0;padding:4px 6px;font-size:13px}.cinfo input[readonly]{background:transparent;border-color:transparent;color:var(--ink,#1f2933)}
-.cinfo .src{font-size:11px;color:var(--mute);white-space:nowrap}.cinfo .cnt.full2{grid-column:1/-1}
+.cinfo .src{font-size:11px;color:var(--mute);white-space:nowrap}.cinfo .cnt.full2,.cinfo .w2{grid-column:1/-1}.cinfo .v{flex:1;min-width:0;overflow-wrap:anywhere;padding:4px 0}
 @media(max-width:620px){.cinfo{grid-template-columns:1fr}}
 .sttabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line,#e1e5ea)}
 .sttabs button{border:0;background:none;padding:8px 14px;font-size:14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -1598,12 +1598,12 @@ if(!window.REC_EMBED) recStart();
         <label class="req">單位</label><select id="c單位"></select>
         <label>工作人員</label><input id="c工作人員" list="dlStaff">
         <label class="req">工程名稱</label><div class="full"><input id="c工程名稱" list="dlTender" placeholder="輸入關鍵字，可從標案清單選取" style="width:100%"></div>
-        <label class="cInfoL">工程資訊</label><div class="full cinfo" id="cInfo"></div>
-        <label></label><div class="full info" id="tenderInfo">選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。</div>
+        <label class="cInfoL">工程資訊</label><div class="full cinfo" id="cInfo">
+        </div>
         <label>委員1</label><input id="c委員1" list="dlCom">
         <label>委員2</label><input id="c委員2" list="dlCom">
         <label>領隊</label><input id="c領隊" list="dlLeader">
-        <label>所屬計畫</label><input id="c所屬計畫">
+        <label></label><div></div>
         <label>紀錄表期限</label><div><span class="calc" id="calcRec">—</span> <span class="cnt">（3 個工作天，督導免填）</span></div>
         <label></label><div></div>
         <label>報部改善期限</label><input type="date" id="c報部改善期限">
@@ -2235,46 +2235,50 @@ function updateTenderList() {
   if (u) { const f = list.filter(t => t.機關.indexOf(u) >= 0); if (f.length) list = f; }
   $('dlTender').innerHTML = list.slice(0, 1500).map(t => '<option value="' + esc(t.名稱) + '">' + esc(t.編號 + '｜' + t.縣市) + '</option>').join('');
 }
-function showTenderInfo() {
-  const n = $('c工程名稱').value.trim();
-  const t = n && (S.tenders || []).find(x => x.名稱 === n);
-  $('tenderInfo').innerHTML = t ? '✔ 標案清單：' + esc(t.編號) + '｜' + esc(t.機關) + '｜' + esc(t.縣市) + (t.計畫 && t.計畫 !== '無' ? '｜' + esc(t.計畫) : '')
-    : n ? '<span class="soon">標案清單中找不到此名稱，仍可儲存；工程資訊請在上方手動填寫</span>' : '選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。';
-  if (t && !$('c所屬計畫').value && t.計畫 && t.計畫 !== '無') $('c所屬計畫').value = t.計畫;
+/* ===== 工程資訊：標案清單資料、所屬計畫與工程基本資料整合在同一區 =====
+   先由標案清單帶入（標示「標案清單」），之後可自行修改，儲存後寫入資料庫；
+   金額等級（依發包預算）、自辦委外（依監造單位）由系統判斷，不開放填寫 */
+const INFO_F = ['縣市鄉鎮', '發包預算', '契約金額', '設計單位', '監造單位', '承包商', '專案管理單位'];
+const INFO_PH = { 發包預算: '千元', 契約金額: '千元' };
+{ // 版面：標案編號｜縣市鄉鎮、執行機關、所屬計畫、預算｜契約金額、金額等級｜自辦委外、設計｜監造、承包商｜專案管理
+  const inp = k => '<div><b>' + k + '</b><input id="i' + k + '" data-k="' + k + '" placeholder="' + (INFO_PH[k] || '') + '"><span class="src" id="s' + k + '"></span></div>';
+  const val = (k, lab, note, w2) => '<div' + (w2 ? ' class="w2"' : '') + '><b>' + lab + '</b><span class="v" id="v' + k + '">—</span>' + (note ? '<span class="src">' + note + '</span>' : '') + '</div>';
+  $('cInfo').innerHTML = val('標案編號', '標案編號') + inp('縣市鄉鎮') + val('機關', '執行機關', '', true) +
+    '<div class="w2"><b>所屬計畫</b><input id="c所屬計畫" data-k="所屬計畫"><span class="src" id="s所屬計畫"></span></div>' +
+    inp('發包預算') + inp('契約金額') + val('金額等級', '金額等級', '系統判斷') + val('自辦委外', '自辦委外', '系統判斷') +
+    inp('設計單位') + inp('監造單位') + inp('承包商') + inp('專案管理單位') + '<div class="cnt full2" id="infoNote"></div>';
 }
-$('c單位').onchange = updateTenderList;
-$('c工程名稱').onchange = () => { showTenderInfo(); loadTenderInfo(true); };
-/* ===== 工程資訊：先由標案清單帶入，之後可自行修改；儲存時寫入資料庫 ===== */
-const INFO_F = ['發包預算', '契約金額', '金額等級', '自辦委外', '設計單位', '監造單位', '承包商', '專案管理單位'];
-const INFO_PH = { 發包預算: '千元', 契約金額: '千元', 金額等級: '依發包預算自動帶入', 自辦委外: '依監造單位自動帶入' };
+const ALL_INFO = INFO_F.concat(['所屬計畫']);
+const infoEl = k => k === '所屬計畫' ? $('c所屬計畫') : $('i' + k);
 S.tiMemo = {};
+function showTenderInfo() { }   // 已整合到工程資訊區
+$('c單位').onchange = updateTenderList;
+$('c工程名稱').onchange = () => loadTenderInfo(true);
 function renderInfo(c, ro) {
   S.infoRo = ro;
-  $('cInfo').innerHTML = INFO_F.map(k => '<div><b>' + k + '</b><input id="i' + k + '" data-k="' + k + '" placeholder="' + (INFO_PH[k] || '') + '"><span class="src" id="s' + k + '"></span></div>').join('') +
-    '<div class="cnt full2" id="infoNote"></div>';
   INFO_F.forEach(k => { const el = $('i' + k); el.value = c ? (c[k] == null ? '' : String(c[k])) : ''; el.readOnly = ro; });
-  loadTenderInfo(false);
+  ALL_INFO.forEach(k => { $('s' + k).textContent = ''; });
+  $('c所屬計畫').readOnly = ro;
+  $('v標案編號').textContent = (c && c.標案編號) || '—'; $('v機關').textContent = '—';
+  deriveInfo(); loadTenderInfo(false);
 }
-/* 依發包預算、監造單位推算金額等級、自辦委外（force：來源欄位被修改時重新帶入；否則只補空白） */
-function deriveInfo(force) {
+/* 系統判斷：金額等級、自辦委外（與後台規則相同） */
+function deriveInfo() {
   const amt = $('i發包預算').value.replace(/[,，\s]/g, ''), sup = $('i監造單位').value.trim();
-  const lv = amt === '' || isNaN(+amt) ? '' : (+amt < 10000 ? '未達1千萬元' : +amt < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上');
-  const so = sup ? (/農田水利署/.test(sup) ? '自辦' : '委外') : '';
-  [['金額等級', lv, force === '發包預算'], ['自辦委外', so, force === '監造單位']].forEach(([k, v, f]) => {
-    const el = $('i' + k);
-    if (v && (f || !el.value.trim())) { el.value = v; $('s' + k).textContent = '自動'; }
-  });
+  $('v金額等級').textContent = amt === '' || isNaN(+amt) ? '—' : (+amt < 10000 ? '未達1千萬元' : +amt < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上');
+  $('v自辦委外').textContent = sup ? (/農田水利署/.test(sup) ? '自辦' : '委外') : '—';
 }
 $('cInfo').addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   $('s' + k).textContent = '';                       // 自行修改後不再標示來源
-  if (k === '發包預算' || k === '監造單位') deriveInfo(k);
+  deriveInfo();
 });
 /* 查標案清單並帶入：開啟既有行程時只補空白欄位；新增或改工程名稱時以標案清單資料帶入（之後仍可修改） */
 async function loadTenderInfo(nameChanged) {
   const name = $('c工程名稱').value.trim();
-  if (nameChanged) INFO_F.forEach(k => { if ($('s' + k).textContent) { $('i' + k).value = ''; $('s' + k).textContent = ''; } });   // 清掉上一個標案帶入的值
-  $('infoNote').textContent = name ? '查詢標案清單中…' : '';
+  if (nameChanged) ALL_INFO.forEach(k => { if ($('s' + k).textContent) { infoEl(k).value = ''; $('s' + k).textContent = ''; } });   // 清掉上一個標案帶入的值
+  if (nameChanged) { $('v標案編號').textContent = '—'; $('v機關').textContent = '—'; }
+  $('infoNote').textContent = name ? '查詢標案清單中…' : '選取標案清單中的工程名稱，會自動帶入標案編號、計畫、預算、廠商等資料。';
   if (!name) { deriveInfo(); return; }
   let t;
   try { t = await (S.tiMemo[name] = S.tiMemo[name] || api('tenderInfo', { name: name })); }
@@ -2282,12 +2286,18 @@ async function loadTenderInfo(nameChanged) {
   if ($('c工程名稱').value.trim() !== name) return;   // 名稱已改，不套用舊結果
   const overwrite = nameChanged || !S.editing;
   let n = 0;
-  if (t && !S.infoRo) Object.keys(t).filter(k => INFO_F.indexOf(k) >= 0 && k !== '金額等級' && k !== '自辦委外').forEach(k => {
-    const el = $('i' + k);
-    if (overwrite || !el.value.trim()) { el.value = String(t[k]); $('s' + k).textContent = '標案清單'; n++; }
-  });
-  deriveInfo(overwrite ? '發包預算' : null); if (overwrite) deriveInfo('監造單位');
-  $('infoNote').textContent = !t ? '標案清單沒有此工程，請手動填寫。' : n ? '已由標案清單帶入（標示「標案清單」），可再修改，儲存後寫入資料庫。' : '可直接修改，儲存後寫入資料庫。';
+  if (t) {
+    if (t.標案編號) $('v標案編號').textContent = t.標案編號;
+    if (t.機關) $('v機關').textContent = t.機關;
+    if (!S.infoRo) ALL_INFO.forEach(k => {
+      if (t[k] == null || t[k] === '') return;
+      const el = infoEl(k);
+      if (overwrite || !el.value.trim()) { el.value = String(t[k]); $('s' + k).textContent = '標案清單'; n++; }
+    });
+  }
+  deriveInfo();
+  $('infoNote').innerHTML = !t ? '<span class="soon">標案清單中找不到此工程名稱，仍可儲存，資料請手動填寫。</span>'
+    : '✔ 標案清單有此工程' + (n ? '，已帶入標示「標案清單」的欄位' : '') + '；各欄位可再修改，儲存後寫入資料庫。';
 }
 /* 期限試算（與後台規則相同） */
 function addWorkdays(ds, n) {
@@ -2312,7 +2322,7 @@ function formData() {
   if ($('cUndated').checked) { o.日期 = ''; o.預定月份 = $('c預定月份').value; o.年度 = S.editing ? S.editing.年度 : S.year; }
   else o.預定月份 = '';
   o.改善完成 = $('c改善完成').checked;
-  INFO_F.forEach(k => { o[k] = $('i' + k).value.trim(); });
+  INFO_F.forEach(k => { o[k] = $('i' + k).value.trim(); });   // 金額等級、自辦委外由後台判斷
   ['發包預算', '契約金額'].forEach(k => { o[k] = o[k].replace(/[,，\s]/g, ''); });
   if (S.editing) { o.案件編號 = S.editing.案件編號; o._ver = S.editing.修改時間; }
   return o;
