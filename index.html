@@ -276,8 +276,10 @@ button:disabled{opacity:.5;cursor:default}
 #tbCode td:nth-child(3){min-width:12em}
 .hbar{display:inline-block;height:8px;background:var(--pri);border-radius:0 4px 4px 0;vertical-align:middle;margin-right:6px;opacity:.75}
 .note2{font-size:12px;color:var(--mute);margin-top:6px}
-.cinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;font-size:13px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:6px 10px}
-.cinfo div{display:flex;gap:6px;min-width:0}.cinfo b{font-weight:500;color:var(--mute);white-space:nowrap;flex:none}.cinfo span{overflow-wrap:anywhere}
+.cinfo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;font-size:13px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:8px 10px}
+.cinfo > div{display:flex;gap:6px;align-items:center;min-width:0}.cinfo b{font-weight:500;color:var(--mute);white-space:nowrap;flex:none;width:6.5em}
+.cinfo input{flex:1;min-width:0;padding:4px 6px;font-size:13px}.cinfo input[readonly]{background:transparent;border-color:transparent;color:var(--ink,#1f2933)}
+.cinfo .src{font-size:11px;color:var(--mute);white-space:nowrap}.cinfo .cnt.full2{grid-column:1/-1}
 @media(max-width:620px){.cinfo{grid-template-columns:1fr}}
 .sttabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px;border-bottom:1px solid var(--line,#e1e5ea)}
 .sttabs button{border:0;background:none;padding:8px 14px;font-size:14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -2162,11 +2164,7 @@ function openCase(id, date) {
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
   if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
-  // 工程資訊（由標案清單帶入，唯讀顯示）
-  const money = v => v === '' || v == null ? '' : (isNaN(+v) ? esc(v) : (+v).toLocaleString('zh-TW') + ' 千元');
-  const INFO = [['發包預算', money], ['契約金額', money], ['金額等級'], ['自辦委外'], ['設計單位'], ['監造單位'], ['承包商'], ['專案管理單位']];
-  $('cInfo').innerHTML = c ? INFO.map(([k, f]) => '<div><b>' + k + '</b><span>' + ((f ? f(c[k]) : esc(c[k])) || '<span class="cnt">—</span>') + '</span></div>').join('') : '';
-  $('cInfo').classList.toggle('hide', !c); document.querySelector('.cInfoL').classList.toggle('hide', !c);
+  renderInfo(c, ro);
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
   if (!c) setTimeout(() => $('c日期').focus(), 50);
@@ -2198,11 +2196,49 @@ function showTenderInfo() {
   const n = $('c工程名稱').value.trim();
   const t = n && (S.tenders || []).find(x => x.名稱 === n);
   $('tenderInfo').innerHTML = t ? '✔ 標案清單：' + esc(t.編號) + '｜' + esc(t.機關) + '｜' + esc(t.縣市) + (t.計畫 && t.計畫 !== '無' ? '｜' + esc(t.計畫) : '')
-    : n ? '<span class="soon">標案清單中找不到此名稱，仍可儲存（基本資料需日後補登）</span>' : '選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。';
+    : n ? '<span class="soon">標案清單中找不到此名稱，仍可儲存；工程資訊請在上方手動填寫</span>' : '選取標案清單中的工程，儲存時會自動帶入預算、廠商、縣市、開工日期等資料。';
   if (t && !$('c所屬計畫').value && t.計畫 && t.計畫 !== '無') $('c所屬計畫').value = t.計畫;
 }
 $('c單位').onchange = updateTenderList;
-$('c工程名稱').onchange = showTenderInfo;
+$('c工程名稱').onchange = () => { showTenderInfo(); loadTenderInfo(); };
+/* ===== 工程資訊：標案清單有資料的欄位帶入並鎖定，沒有的開放填寫 ===== */
+const INFO_F = ['發包預算', '契約金額', '金額等級', '自辦委外', '設計單位', '監造單位', '承包商', '專案管理單位'];
+const INFO_PH = { 發包預算: '千元', 契約金額: '千元', 金額等級: '依發包預算自動判定', 自辦委外: '依監造單位自動判定' };
+S.tiMemo = {};
+function renderInfo(c, ro) {
+  S.infoRo = ro;
+  $('cInfo').innerHTML = INFO_F.map(k => '<div><b>' + k + '</b><input id="i' + k + '" data-k="' + k + '" placeholder="' + (INFO_PH[k] || '') + '"><span class="src" id="s' + k + '"></span></div>').join('') +
+    '<div class="cnt full2" id="infoNote"></div>';
+  INFO_F.forEach(k => { const el = $('i' + k); el.value = c ? (c[k] == null ? '' : String(c[k])) : ''; el.readOnly = ro; });
+  deriveInfo(); loadTenderInfo();
+}
+/* 金額等級、自辦委外：有發包預算／監造單位時自動判定（不可改），沒有時可手填 */
+function deriveInfo() {
+  const amt = $('i發包預算').value.replace(/[,，\s]/g, ''), sup = $('i監造單位').value.trim();
+  const lv = amt === '' || isNaN(+amt) ? '' : (+amt < 10000 ? '未達1千萬元' : +amt < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上');
+  const so = sup ? (/農田水利署/.test(sup) ? '自辦' : '委外') : '';
+  [['金額等級', lv], ['自辦委外', so]].forEach(([k, v]) => {
+    const el = $('i' + k);
+    if (v) { el.value = v; el.readOnly = true; $('s' + k).textContent = '自動'; }
+    else { el.readOnly = S.infoRo; if ($('s' + k).textContent === '自動') { $('s' + k).textContent = ''; el.value = ''; } }
+  });
+}
+$('cInfo').addEventListener('input', e => { if (e.target.dataset.k === '發包預算' || e.target.dataset.k === '監造單位') deriveInfo(); });
+async function loadTenderInfo() {
+  const name = $('c工程名稱').value.trim();
+  // 先解除上一個標案帶入的鎖定
+  INFO_F.forEach(k => { if ($('s' + k).textContent === '標案清單') { $('s' + k).textContent = ''; $('i' + k).readOnly = S.infoRo; $('i' + k).value = S.editing && S.editing[k] != null ? String(S.editing[k]) : ''; } });
+  $('infoNote').textContent = name ? '查詢標案清單中…' : '';
+  if (!name) { deriveInfo(); return; }
+  let t;
+  try { t = await (S.tiMemo[name] = S.tiMemo[name] || api('tenderInfo', { name: name })); }
+  catch (e) { delete S.tiMemo[name]; $('infoNote').textContent = '標案清單讀取失敗，可手動填寫'; return; }
+  if ($('c工程名稱').value.trim() !== name) return;   // 名稱已改，不套用舊結果
+  const keys = t ? Object.keys(t).filter(k => INFO_F.indexOf(k) >= 0) : [];
+  keys.forEach(k => { $('i' + k).value = String(t[k]); $('i' + k).readOnly = true; $('s' + k).textContent = '標案清單'; });
+  deriveInfo();
+  $('infoNote').textContent = !t ? '標案清單沒有此工程，請手動填寫。' : keys.length < INFO_F.length ? '標示「標案清單」的欄位由標案清單帶入；其餘標案清單沒有資料，可手動填寫。' : '全部由標案清單帶入。';
+}
 /* 期限試算（與後台規則相同） */
 function addWorkdays(ds, n) {
   const d = new Date(ds + 'T00:00:00'); let k = 0;
@@ -2226,6 +2262,8 @@ function formData() {
   if ($('cUndated').checked) { o.日期 = ''; o.預定月份 = $('c預定月份').value; o.年度 = S.editing ? S.editing.年度 : S.year; }
   else o.預定月份 = '';
   o.改善完成 = $('c改善完成').checked;
+  INFO_F.forEach(k => { o[k] = $('i' + k).value.trim(); });
+  ['發包預算', '契約金額'].forEach(k => { o[k] = o[k].replace(/[,，\s]/g, ''); });
   if (S.editing) { o.案件編號 = S.editing.案件編號; o._ver = S.editing.修改時間; }
   return o;
 }
@@ -2234,6 +2272,8 @@ async function save(force) {
   const miss = [];
   if (!o.日期 && !$('cUndated').checked) miss.push('日期（或勾選日期未定）'); if (!o.項目) miss.push('項目'); if (!o.單位) miss.push('單位'); if (!o.工程名稱) miss.push('工程名稱');
   if (miss.length) return showErr('請填寫：' + miss.join('、'));
+  const badAmt = ['發包預算', '契約金額'].filter(k => o[k] && isNaN(+o[k]));
+  if (badAmt.length) return showErr(badAmt.join('、') + '請填數字（單位：千元）');
   $('btnSave').disabled = $('btnForce').disabled = true;
   loading(true, '儲存中…');
   try {
