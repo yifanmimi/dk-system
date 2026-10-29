@@ -292,6 +292,22 @@ button:disabled{opacity:.5;cursor:default}
 .sttabs button{border:0;background:none;padding:8px 14px;font-size:14px;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .sttabs button.on{color:var(--pri,#1f5fa8);border-bottom-color:var(--pri,#1f5fa8);font-weight:600}
 .sttabs button.hide{display:none}
+.tgset{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;padding:8px 10px;background:#f7f9fb;border:1px solid var(--line,#e1e5ea);border-radius:6px;font-size:13px}
+.tgset input[type=number]{width:6em}.tgset .rocd input[type=text]{width:7.5em;flex:none;min-width:0}
+.catbtn{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 6px;align-items:center}
+.catbtn button.on{background:var(--pri,#1f5fa8);color:#fff;border-color:var(--pri,#1f5fa8)}
+.prog{display:inline-block;width:90px;height:8px;background:#e6ebf1;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.prog i{display:block;height:100%;background:var(--pri)}
+.prog.ok i{background:#2e7d4f}
+/* 督導月統計表 */
+#v-month .mrf{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+table.mr{border-collapse:collapse;width:100%;font-size:13px;background:#fff}
+table.mr th,table.mr td{border:1px solid #9aa5b1;padding:4px 6px;text-align:center;vertical-align:middle}
+table.mr th{background:#eef2f7;font-weight:600;white-space:pre-line}
+table.mr td input{width:4.5em;text-align:center;padding:2px 4px}
+table.mr td.hl{background:#fffbe6}
+.mrnote{font-size:12px;color:var(--mute);margin-top:8px;line-height:1.7}
+.mrwarn{font-size:13px;color:#9a5b00;background:#fff4e0;border-radius:6px;padding:6px 10px;margin-top:8px}
+.mrrep{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:13px}.mrrep input{width:9em}
 .perms{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:8px}
 .perms fieldset{border:1px solid var(--line,#e1e5ea);border-radius:6px;padding:6px 10px;margin:0}
 .perms legend{font-size:12px;color:var(--mute);padding:0 4px}
@@ -321,6 +337,7 @@ button:disabled{opacity:.5;cursor:default}
     <button data-v="due" data-p="行程檢視">期限提醒</button>
     <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
+    <button data-v="month" data-p="統計">督導月統計表</button>
     <button data-v="admin" class="hide" id="navAdmin" data-p="帳號管理,系統維護">管理</button>
   </nav>
 </header>
@@ -408,7 +425,7 @@ button:disabled{opacity:.5;cursor:default}
       <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
     </div>
     <div class="sttabs" id="stTabs">
-      <button data-st="1" class="on">年度執行概況</button><button data-st="2">成績與等第</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
+      <button data-st="1" class="on">年度執行概況</button><button data-st="6">年度目標達成</button><button data-st="2">成績與等第</button><button data-st="7">歷年成績比較</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
     </div>
     <div class="stgrid">
       <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button><button class="b" data-csv="tbType" data-fmt="xlsx">下載 Excel</button></h3>
@@ -416,27 +433,57 @@ button:disabled{opacity:.5;cursor:default}
         <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
           <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div></div></div>
       </div>
-      <div class="card hide" data-st="2"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button><button class="b" data-csv="tbGrade" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="6"><h3>2. 年度目標達成<span class="sp"></span><span class="cnt">計算至</span><select id="tgCut" title="今年度計畫期間計算到哪一天"></select><button class="b" data-csv="tbTarget">下載 CSV</button><button class="b" data-csv="tbTarget" data-fmt="xlsx">下載 Excel</button></h3>
+        <div class="tiles" id="stTiles6"></div>
+        <table class="st" id="tbTarget"></table>
+        <div class="note2">依原「案件統計」算法：計畫期間＝計畫起始日至計算日（過去年度到年底），只計「督導」與「代部查核」，不含已取消；本頁不套用上方的項目與單位篩選，年度依上方勾選。</div>
+        <div class="cnt" style="margin:14px 0 4px" id="tgMonTitle"></div>
+        <div class="tbl" style="max-height:460px"><table class="st" id="tbTgMon"></table></div>
+        <div class="row" style="margin-top:6px"><button class="b" data-csv="tbTgMon">下載各月 CSV</button><button class="b" data-csv="tbTgMon" data-fmt="xlsx">下載各月 Excel</button></div>
+        <div class="tgset hide" id="tgSet"><b>目標設定</b><select id="tgY"></select><label>督導目標 <input type="number" id="tgDu" min="0"></label><label>代部查核目標 <input type="number" id="tgDb" min="0"></label><label>計畫起始日 <input type="date" id="tgStart"></label><button class="b p" id="tgSave">儲存</button><span class="cnt" id="tgMsg"></span></div>
+      </div>
+      <div class="card hide" data-st="2"><h3>3. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button><button class="b" data-csv="tbGrade" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles2"></div>
         <div class="two"><div><table class="st" id="tbGrade"></table><div class="note2">等第沿用原統計表：80 分以上甲、70–79 乙、未滿 70 丙。</div></div>
           <div><div class="cnt" style="margin-bottom:4px">成績分布（每 5 分一級）</div><div class="bars" id="stHist"></div><div class="barx" id="stHistX"></div></div></div>
       </div>
-      <div class="card hide" data-st="3"><h3>3. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button><button class="b" data-csv="tbUnit" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="7"><h3>4. 歷年成績比較<span class="sp"></span><button class="b" data-csv="tbHist">下載 CSV</button><button class="b" data-csv="tbHist" data-fmt="xlsx">下載 Excel</button></h3>
+        <div class="tbl" style="max-height:520px"><table class="st" id="tbHist"></table></div>
+        <div class="note2">依上方勾選的年度、項目與單位篩選；等第：80 分以上甲、70–79 乙、未滿 70 丙（不計分者不列入）。點欄名可排序。</div>
+        <div class="two" style="margin-top:14px"><div><div class="cnt" style="margin-bottom:4px">自辦／委外監造比較</div><table class="st" id="tbSelf"></table><div class="row" style="margin-top:6px"><button class="b" data-csv="tbSelf" data-fmt="xlsx">下載 Excel</button></div></div>
+          <div><div class="cnt" style="margin-bottom:4px">金額等級比較（依發包預算）</div><table class="st" id="tbAmt"></table><div class="row" style="margin-top:6px"><button class="b" data-csv="tbAmt" data-fmt="xlsx">下載 Excel</button></div></div></div>
+      </div>
+      <div class="card hide" data-st="3"><h3>5. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button><button class="b" data-csv="tbUnit" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbUnit"></table></div>
         <div class="note2">點欄名可排序。平均缺失數只計已建立缺失的案件（排除「缺失未建立」），避免低估。</div>
       </div>
-      <div class="card hide" data-st="4"><h3>4. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button><button class="b" data-csv="tbCode" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="4"><h3>6. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button><button class="b" data-csv="tbCode" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles4"></div>
-        <div class="two"><div><table class="st" id="tbSec"></table></div><div><table class="st" id="tbLevel"></table></div></div>
-        <div class="cnt" style="margin:12px 0 4px">最常見缺失代碼前 20 名（點選列可看實際案例）</div>
+        <div class="two"><div><table class="st" id="tbCat"></table><table class="st" id="tbSec" style="margin-top:12px"></table></div><div><table class="st" id="tbLevel"></table></div></div>
+        <div class="catbtn" id="catBtns"></div>
+        <table class="st" id="tbTop10"></table>
+        <div class="row" style="margin-top:6px"><button class="b" data-csv="tbTop10">下載此表 CSV</button><button class="b" data-csv="tbTop10" data-fmt="xlsx">下載此表 Excel</button><span class="cnt">缺失率＝該代碼筆數 ÷ 同一年度、同一類別的缺失總筆數（沿用原「缺失統計(單位)」算法）；單位請用上方篩選。</span></div>
+        <div class="cnt" style="margin:14px 0 4px">最常見缺失代碼前 20 名（點選列可看實際案例；勾選多個年度時加列各年度缺失率）</div>
         <table class="st" id="tbCode"></table>
       </div>
-      <div class="card hide" id="stComBox" data-st="5"><h3>5. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button><button class="b" data-csv="tbCom" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" id="stComBox" data-st="5"><h3>7. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button><button class="b" data-csv="tbCom" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbCom"></table></div>
-        <div class="note2">以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
+        <div class="note2">點選委員可看出席案件明細。以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
       </div>
     </div>
   </section>
+  <!-- 督導月統計表 -->
+  <section id="v-month" class="ix hide">
+    <div class="card">
+      <div class="mrf"><b>督導月統計表</b><select id="mrY" title="年度"></select><select id="mrM" title="月份"></select><label class="cnt">項目 <select id="mrT"></select></label><span class="sp" style="flex:1"></span><button class="b hide" id="mrSave">儲存手填欄位</button><button class="b p" id="mrXlsx">下載 Excel</button><span class="cnt" id="mrInfo"></span></div>
+      <div class="tbl"><table class="mr" id="mrT1"></table></div>
+      <div class="tbl" style="margin-top:14px;max-width:760px"><table class="mr" id="mrT2"></table></div>
+      <div class="mrrep">填表人 <input id="mrRep"> 職稱 <input id="mrTitle"> 電話 <input id="mrTel"></div>
+      <div id="mrWarn"></div>
+      <div class="mrnote">・依原「督導月統計表」算法：只計所選項目（預設「督導」），依案件日期所在月份；金額分級依發包預算（千元）：查核金額以上 ≥ 50,000；一千萬元以上未達查核金額 10,000～未滿 50,000；公告金額以上未達一千萬元 1,500～未滿 10,000。<br>・「全年度執行總件數」與「複查件數」為手填欄位（黃底），按「儲存手填欄位」後保存，下次開啟自動帶入。<br>・成績等第依公共工程施工品質查核（督導）評分：優等 90 分以上、甲等 80～未滿 90、乙等 70～未滿 80、丙等未滿 70；「不計分」另計。</div>
+    </div>
+  </section>
+
   <div class="mask hide ix" id="stMask"><div class="dlg" style="width:960px"><header><h3 id="stMTitle"></h3><span class="sp"></span><button class="b" id="stMClose">關閉</button></header><div class="bd"><div class="tbl" style="max-height:65vh"><table class="st" id="stMTable"></table></div></div></div></div>
 
   <!-- 督導紀錄（原獨立頁，併入同一頁） -->
@@ -1813,14 +1860,14 @@ function setView(v) {
   if (!$('v-' + v)) v = 'list';
   S.view = v;
   [...$('nav').querySelectorAll('button')].forEach(x => x.classList.toggle('on', x.dataset.v === v));
-  ['cal', 'list', 'due', 'admin', 'rec', 'stat'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
+  ['cal', 'list', 'due', 'admin', 'rec', 'stat', 'month'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
   // 督導紀錄有自己的案件清單（不分年度），隱藏年度選單與新增鈕
-  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat');
-  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || !(S.me && canEdit()));
-  if (v === 'stat') setTimeout(loadStats, 0);
+  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month');
+  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || !(S.me && canEdit()));
+  if (v === 'stat' || v === 'month') setTimeout(loadStats, 0);
   if (v === 'rec' && !S._recStarted) { S._recStarted = true; REC.start(); }
 }
-['c日期', 'c報部改善期限', 'stFrom', 'stTo'].forEach(rocInput);
+['c日期', 'c報部改善期限', 'stFrom', 'stTo', 'tgStart'].forEach(rocInput);
 const CASE_ID = (new URLSearchParams(location.search).get('id') || '').replace(/[^0-9\-]/g, '');
 setView(S.view);
 if (S.view === 'rec' && CASE_ID) REC.open(CASE_ID);
@@ -2023,8 +2070,9 @@ $('btnXlsx').onclick = async () => {
 };
 
 /* ===================== 統計 ===================== */
-// 案件欄位索引：[編號, 年度, 月, 項目, 單位, 單位別, 狀態, 成績, 缺失數, 委員1, 委員2, 日期]；缺失：[案件, 代碼, 等級, 筆數, 扣點]
-const SI = { id: 0, y: 1, m: 2, type: 3, unit: 4, kind: 5, st: 6, score: 7, def: 8, c1: 9, c2: 10, date: 11 };
+// 案件欄位索引：[編號, 年度, 月, 項目, 單位, 單位別, 狀態, 成績, 缺失數, 委員1, 委員2, 日期, 工程名稱, 發包預算, 自辦委外, 不計分]；缺失：[案件, 代碼, 等級, 筆數, 扣點]
+const SI = { id: 0, y: 1, m: 2, type: 3, unit: 4, kind: 5, st: 6, score: 7, def: 8, c1: 9, c2: 10, date: 11, name: 12, bud: 13, self: 14, nos: 15 };
+const STAT_KEY = 'dk_stat_v3';
 const SEC_NAME = { A1: '主辦機關／PCM（4.01）', A2: '監造單位（4.02）', B: '承攬廠商（4.03）', W1: '施工品質（5.01–5.09）', W2: '材料設備（5.10–5.13）', W3: '施工安全衛生（5.14–5.17）', P: '施工進度（6.xx）', D: '規劃設計（7.xx）', O: '其他／未填代碼' };
 function secOf(code) {
   const m = String(code || '').match(/^(\d)\.(\d{2})/); if (!m) return 'O';
@@ -2040,14 +2088,14 @@ const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; }
 async function loadStats() {
   if (!S.stat) {
-    try { S.stat = JSON.parse(localStorage.getItem('dk_stat_v2') || 'null'); } catch (e) { }
+    try { localStorage.removeItem('dk_stat_v2'); S.stat = JSON.parse(localStorage.getItem(STAT_KEY) || 'null'); } catch (e) { }
     if (S.stat) initStatFilters();
   }
-  if (S._statFresh) return renderStats();
+  if (S._statFresh) { renderStats(); if (S.view === 'month') renderMonth(); return; }
   try {
     const d = await api('stats', {});
     S.stat = d; S._statFresh = true;
-    try { localStorage.setItem('dk_stat_v2', JSON.stringify(Object.assign({}, d, { cases: d.cases.map(c => c.slice(0, 9).concat(['', '', c[11]])) }))); } catch (e) { }   // 本機暫存不含委員
+    try { localStorage.setItem(STAT_KEY, JSON.stringify(Object.assign({}, d, { cases: d.cases.map(c => { const x = c.slice(); x[SI.c1] = ''; x[SI.c2] = ''; return x; }) }))); } catch (e) { }   // 本機暫存不含委員
     initStatFilters();
   } catch (e) { $('stInfo').textContent = '讀取失敗：' + errMsg(e); }
 }
@@ -2069,7 +2117,10 @@ function initStatFilters() {
   $('stTypes').innerHTML = types.map(t => '<label><input type="checkbox" value="' + esc(t) + '"' + (curT.indexOf(t) >= 0 ? ' checked' : '') + '> ' + esc(t) + '</label>').join('');
   $('stTabCom').classList.toggle('hide', !!S.stat.committeeHidden);
   showStatTab();
+  initTargetCtl(ys);
+  initMonthCtl(ys);
   renderStats();
+  if (S.view === 'month') renderMonth();
 }
 $('stYears').addEventListener('change', () => { S.statYears = [...$('stYears').querySelectorAll('input:checked')].map(i => +i.value); renderStats(); });
 $('stUnit').onchange = () => renderStats();
@@ -2169,40 +2220,335 @@ function renderStats() {
   // 缺失列 [案件, 代碼, 等級, 筆數, 扣點]；只取篩選後案件的缺失
   const D = S.stat.defects.filter(d => byId[d[0]] && byId[d[0]][SI.st] !== '已取消');
   const tot = D.reduce((a, d) => a + d[3], 0);
+  const ysD = F.range ? [] : [...new Set(D.map(d => byId[d[0]][SI.y]))].sort();
   const withDef = live.filter(c => c[SI.def] > 0).length;
   tiles('stTiles4', [['缺失總筆數', tot], ['已建立缺失案件', withDef], ['平均每案缺失', fmt(withDef ? tot / withDef : NaN, 1)], ['扣點合計', D.reduce((a, d) => a + d[4], 0)]]);
   const bySec = {}; D.forEach(d => { const k = secOf(d[1]); bySec[k] = (bySec[k] || 0) + d[3]; });
   table('tbSec', ['段落', '筆數', '比例'], Object.keys(SEC_NAME).filter(k => bySec[k]).map(k => [SEC_NAME[k], bySec[k], '<span class="hbar" style="width:' + (bySec[k] / tot * 120) + 'px"></span>' + pct(bySec[k], tot)]), { num: [1] });
   const byLv = {}; D.forEach(d => { const k = d[2] || '未填'; byLv[k] = (byLv[k] || 0) + d[3]; });
   table('tbLevel', ['等級', '筆數', '比例'], ['L', 'M', 'S', '未填'].filter(k => byLv[k]).map(k => [{ L: 'L（輕）', M: 'M（中）', S: 'S（重）', 未填: '未填' }[k], byLv[k], pct(byLv[k], tot)]), { num: [1, 2] });
-  const byCode = {}; D.forEach(d => { if (!d[1]) return; const o = byCode[d[1]] = byCode[d[1]] || { n: 0, L: 0, M: 0, S: 0 }; o.n += d[3]; if (o[d[2]] != null) o[d[2]] += d[3]; });
+  const byCode = {}, yTot = {}; D.forEach(d => { const y = byId[d[0]][SI.y]; yTot[y] = (yTot[y] || 0) + d[3]; if (!d[1]) return; const o = byCode[d[1]] = byCode[d[1]] || { n: 0, L: 0, M: 0, S: 0, y: {} }; o.n += d[3]; o.y[y] = (o.y[y] || 0) + d[3]; if (o[d[2]] != null) o[d[2]] += d[3]; });
   const top = Object.keys(byCode).sort((a, b) => byCode[b].n - byCode[a].n).slice(0, 20);
-  table('tbCode', ['名次', '代碼', '內容', '段落', '筆數', '比例', 'L', 'M', 'S'], top.map((k, i) => {
-    const r = [i + 1, k, esc(String(S.stat.codes[k] || '').replace(/□/g, '').slice(0, 60)), (SEC_NAME[secOf(k)] || '').replace(/（.*）/, ''), byCode[k].n, pct(byCode[k].n, tot), byCode[k].L, byCode[k].M, byCode[k].S];
+  const yc = ysD.length > 1 ? ysD : [];
+  table('tbCode', ['名次', '代碼', '內容', '類別', '筆數', '比例'].concat(yc.map(y => y + ' 年缺失率')).concat(['L', 'M', 'S']), top.map((k, i) => {
+    const r = [i + 1, k, esc(String(S.stat.codes[k] || '').replace(/□/g, '').slice(0, 60)), esc(catOf(k).join('／')), byCode[k].n, pct(byCode[k].n, tot)].concat(yc.map(y => byCode[k].y[y] ? pct(byCode[k].y[y], yTot[y]) : '')).concat([byCode[k].L, byCode[k].M, byCode[k].S]);
     r._attr = ' class="click" data-code="' + k + '"'; return r;
-  }), { num: [0, 4, 5, 6, 7, 8] });
+  }), { num: [0, 4, 5].concat(yc.map((y, i) => 6 + i), [6 + yc.length, 7 + yc.length, 8 + yc.length]) });
+  renderCat(D, byId, tot);
   // 5. 委員
   if (!S.stat.committeeHidden) {
     const com = {};
     done.forEach(c => [c[SI.c1], c[SI.c2]].filter(Boolean).forEach(n => { const o = com[n] = com[n] || { n: 0, sc: [], df: [] }; o.n++; if (c[SI.score] !== '') o.sc.push(c[SI.score]); if (c[SI.def] > 0) o.df.push(c[SI.def]); }));
     table('tbCom', ['委員', '出席件數', '有成績', '平均成績', '最高', '最低', '平均缺失數'], Object.keys(com).map(n => {
-      const o = com[n]; return [esc(n), o.n, o.sc.length, fmt(avg(o.sc), 1), o.sc.length ? Math.max(...o.sc) : '—', o.sc.length ? Math.min(...o.sc) : '—', fmt(avg(o.df), 1)];
+      const o = com[n], r = [esc(n), o.n, o.sc.length, fmt(avg(o.sc), 1), o.sc.length ? Math.max(...o.sc) : '—', o.sc.length ? Math.min(...o.sc) : '—', fmt(avg(o.df), 1)];
+      r._attr = ' class="click" data-com="' + esc(n) + '"'; return r;
     }).sort((a, b) => b[1] - a[1]), { num: [1, 2, 3, 4, 5, 6], sort: true });
   }
+  // 年度目標達成、歷年成績比較
+  renderTarget();
+  renderHist(live);
 }
 /* 點缺失代碼 → 實際案例 */
-$('tbCode').addEventListener('click', async e => {
-  const tr = e.target.closest('tr[data-code]'); if (!tr) return;
-  const code = tr.dataset.code, F = statFilter();
+$('tbCode').addEventListener('click', e => { const tr = e.target.closest('tr[data-code]'); if (tr) showCodeCases(tr.dataset.code); });
+async function showCodeCases(code) {
+  const F = statFilter();
   $('stMTitle').textContent = code + '　' + String(S.stat.codes[code] || '').replace(/□/g, '').slice(0, 40);
   $('stMTable').innerHTML = '<tr><td class="cnt">讀取中…</td></tr>'; $('stMask').classList.remove('hide');
   try {
     const list = await api('statsCode', { code: code, years: F.ys, types: F.ty, kind: F.kd, unit: F.un, from: F.from, to: F.to });
     table('stMTable', ['日期', '單位', '工程名稱', '缺失紀錄'], list.map(r => [R(r.日期), esc(r.單位), esc(r.工程名稱), esc(r.缺失紀錄)]));
   } catch (err) { $('stMTable').innerHTML = '<tr><td class="cnt">讀取失敗：' + esc(errMsg(err)) + '</td></tr>'; }
-});
+}
 $('stMClose').onclick = () => $('stMask').classList.add('hide');
 $('stMask').addEventListener('mousedown', e => { if (e.target === $('stMask')) $('stMask').classList.add('hide'); });
+/* ===== 共用：等第（統計表用 80/70 分界；月統計表另用優甲乙丙） ===== */
+const gr3 = x => x >= 80 ? '甲' : x >= 70 ? '乙' : '丙';
+const amtLv = b => b === '' || b == null ? '未填發包預算' : b < 10000 ? '未達1千萬元' : b < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上';
+const statSet = () => (S.stat && S.stat.settings) || { years: {} };
+const canSetStat = () => has('行程編輯') || has('系統維護');
+const ymdOf = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const monthEnd = (wy, m) => ymdOf(new Date(wy, m, 0));
+/* 缺失代碼 → [類別, 項目]（缺失扣點表沒有的代碼依章節推定） */
+function catOf(code) {
+  const c = S.stat.cats && S.stat.cats[code];
+  if (c && c[0]) return c;
+  const k = secOf(code);
+  return ({ A1: ['品質管理制度', '工程主辦機關(專案管理廠商)'], A2: ['品質管理制度', '監造單位'], B: ['品質管理制度', '承攬廠商'], W1: ['施工品質', '強度Ⅰ'], W2: ['施工品質', '強度Ⅱ'], W3: ['施工品質', '安全'], P: ['施工進度', '施工進度'], D: ['規劃設計', '規劃設計'] })[k] || ['其他／未填代碼', '其他'];
+}
+const CAT_ORDER = ['品質管理制度', '施工品質', '施工進度', '規劃設計', '其他／未填代碼'];
+
+/* ===================== 年度目標達成 ===================== */
+function initTargetCtl(ys) {
+  const cur = $('tgCut').value || 'today', wy = new Date().getFullYear();
+  $('tgCut').innerHTML = '<option value="today">今天</option>' + Array.from({ length: 12 }, (_, i) => '<option value="' + (i + 1) + '">' + (i + 1) + ' 月底</option>').join('');
+  $('tgCut').value = cur;
+  const yy = [...new Set(ys.concat([ys[0] + 1]))].sort((a, b) => b - a);
+  const curY = $('tgY').value || String(ys[0]);
+  $('tgY').innerHTML = yy.map(y => '<option value="' + y + '">' + y + ' 年度</option>').join('');
+  $('tgY').value = curY;
+  $('tgSet').classList.toggle('hide', !canSetStat());
+  fillTargetForm();
+}
+function fillTargetForm() {
+  const y = $('tgY').value, t = statSet().years[y] || {};
+  $('tgDu').value = t.督導 == null ? '' : t.督導; $('tgDb').value = t.代部查核 == null ? '' : t.代部查核; $('tgStart').value = t.起始日 || '';
+  $('tgMsg').textContent = '';
+}
+$('tgY').onchange = fillTargetForm;
+$('tgCut').onchange = () => renderTarget();
+$('tgSave').onclick = async () => {
+  $('tgMsg').textContent = '儲存中…';
+  try {
+    const st = await api('saveStatSet', { year: +$('tgY').value, set: { 督導: $('tgDu').value, 代部查核: $('tgDb').value, 起始日: $('tgStart').value } });
+    S.stat.settings = st; $('tgMsg').textContent = '已儲存'; renderTarget();
+  } catch (e) { $('tgMsg').textContent = '儲存失敗：' + errMsg(e); }
+};
+/** 計畫期間（起始日～計算日）內已辦理件數；過去年度算到年底 */
+function targetRange(y) {
+  const wy = +y + 1911, t = statSet().years[y] || {}, now = new Date(), cut = $('tgCut').value || 'today';
+  const start = t.起始日 || wy + '-01-01';
+  let end = wy < now.getFullYear() ? wy + '-12-31' : cut === 'today' ? todayStr() : monthEnd(wy, +cut);
+  if (wy > now.getFullYear()) end = todayStr();
+  return { start, end, t };
+}
+function renderTarget() {
+  if (!S.stat) return;
+  const ys = (S.statYears || []).slice().sort((a, b) => b - a);
+  const cs = S.stat.cases.filter(c => c[SI.st] !== '已取消');
+  const TY = ['督導', '代部查核'];
+  const prog = (a, b) => b ? '<span style="white-space:nowrap"><span class="prog' + (a >= b ? ' ok' : '') + '"><i style="width:' + Math.min(100, a / b * 100) + '%"></i></span>' + pct(a, b) + '</span>' : '—';
+  const rows = ys.map(y => {
+    const { start, end, t } = targetRange(y);
+    const yr = cs.filter(c => c[SI.y] === y);
+    const inP = ty => yr.filter(c => c[SI.type] === ty && c[SI.date] && c[SI.date] >= start && c[SI.date] <= end).length;
+    const whole = ty => yr.filter(c => c[SI.type] === ty).length;
+    const d = inP('督導'), b = inP('代部查核'), td = +t.督導 || 0, tb = +t.代部查核 || 0;
+    return [y, whole('督導'), whole('代部查核'), '<span style="white-space:nowrap">' + R(start) + '～' + R(end) + '</span>', d, td || '—', prog(d, td), b, tb || '—', prog(b, tb), prog(d + b, td + tb)];
+  });
+  table('tbTarget', ['年度', '整年督導（含已排定）', '整年代部查核（含已排定）', '計畫期間', '督導已辦理', '督導目標', '督導完成率', '代部查核已辦理', '代部查核目標', '代部完成率', '總完成率'], rows, { num: [1, 2, 4, 5, 7, 8] });
+  // 最新勾選年度的各月累計
+  const y = ys[0];
+  if (!y) { $('tbTgMon').innerHTML = ''; $('tgMonTitle').textContent = ''; tiles('stTiles6', []); return; }
+  const { start, end, t } = targetRange(y), wy = +y + 1911;
+  const td = +t.督導 || 0, tb = +t.代部查核 || 0;
+  const yr = cs.filter(c => c[SI.y] === y && c[SI.date] && c[SI.date] >= start && c[SI.date] <= end);
+  let ad = 0, ab = 0;
+  const mrows = [];
+  for (let m = +start.slice(5, 7) || 1; m <= 12; m++) {
+    const ms = wy + '-' + pad(m);
+    const d = yr.filter(c => c[SI.type] === '督導' && c[SI.date].slice(0, 7) === ms).length, b = yr.filter(c => c[SI.type] === '代部查核' && c[SI.date].slice(0, 7) === ms).length;
+    ad += d; ab += b;
+    if (ms > end.slice(0, 7)) break;
+    mrows.push([m + ' 月', d, ad, td ? pct(ad, td) : '—', b, ab, tb ? pct(ab, tb) : '—', ad + ab, td + tb ? prog(ad + ab, td + tb) : '—']);
+  }
+  $('tgMonTitle').textContent = y + ' 年度各月累計（計畫期間 ' + R(start) + '～' + R(end) + '）';
+  table('tbTgMon', ['月份', '督導當月', '督導累計', '督導達成率', '代部當月', '代部累計', '代部達成率', '合計累計', '總達成率'], mrows, { num: [1, 2, 3, 4, 5, 6, 7] });
+  const left = d => Math.max(0, d);
+  tiles('stTiles6', [[y + ' 督導已辦理／目標', ad + ' / ' + (td || '—')], ['代部查核已辦理／目標', ab + ' / ' + (tb || '—')], ['總完成率', pct(ad + ab, td + tb)], ['督導尚差', td ? left(td - ad) : '—'], ['代部查核尚差', tb ? left(tb - ab) : '—']]);
+}
+
+/* ===================== 歷年成績比較 ===================== */
+function renderHist(live) {
+  const sc = live.filter(c => c[SI.score] !== '');
+  const ys = [...new Set(sc.map(c => c[SI.y]))].sort();
+  const units = [...new Set(sc.map(c => c[SI.unit]))].sort(cmpUnit);
+  const hasC = sc.some(c => c[SI.score] < 70);
+  const sum = l => { const g = { 甲: 0, 乙: 0, 丙: 0 }; l.forEach(c => g[gr3(c[SI.score])]++); return g; };
+  const head = ['單位', '有成績件數', '甲', '甲%', '乙', '乙%'].concat(hasC ? ['丙', '丙%'] : []).concat(['平均成績']);
+  ys.forEach(y => head.push(...[y + ' 甲', y + ' 乙'].concat(hasC ? [y + ' 丙'] : []).concat([y + ' 平均'])));
+  const line = (name, l) => {
+    const g = sum(l), n = l.length;
+    const r = [name, n, g.甲, pct(g.甲, n), g.乙, pct(g.乙, n)].concat(hasC ? [g.丙, pct(g.丙, n)] : []).concat([fmt(avg(l.map(c => c[SI.score])), 1)]);
+    ys.forEach(y => { const ly = l.filter(c => c[SI.y] === y), gy = sum(ly); r.push(gy.甲, gy.乙); if (hasC) r.push(gy.丙); r.push(ly.length ? fmt(avg(ly.map(c => c[SI.score])), 1) : '—'); });
+    return r;
+  };
+  const rows = units.map(u => line(u, sc.filter(c => c[SI.unit] === u)));
+  const tot = line('<b>總計</b>', sc); tot._attr = ' style="font-weight:600;background:#f3f6fa"';
+  table('tbHist', head, rows.concat(sc.length ? [tot] : []), { num: head.map((h, i) => i).filter(i => i > 0), sort: true, unitCol: 0, _si: 0, _sd: 1 });
+  // 自辦／委外、金額等級
+  const cmp = (id, label, key, order) => {
+    const ks = [...new Set(live.map(key))].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+    table(id, [label, '件數', '有成績', '平均成績', '甲%', '平均缺失數'], ks.map(k => {
+      const l = live.filter(c => key(c) === k), s2 = l.filter(c => c[SI.score] !== '').map(c => c[SI.score]), dd = l.filter(c => c[SI.def] > 0);
+      return [esc(k), l.length, s2.length, fmt(avg(s2), 1), pct(s2.filter(x => x >= 80).length, s2.length), fmt(avg(dd.map(c => c[SI.def])), 1)];
+    }), { num: [1, 2, 3, 4, 5] });
+  };
+  cmp('tbSelf', '監造', c => c[SI.self] || '未判定', ['自辦', '委外']);
+  cmp('tbAmt', '金額等級', c => amtLv(c[SI.bud]), ['查核金額(5千萬元)以上', '1千萬元以上5千萬元以下', '未達1千萬元', '未填發包預算']);
+}
+
+/* ===================== 缺失分析：類別、項目、各類別前 10 ===================== */
+function renderCat(D, byId, tot) {
+  const byCat = {}, byItem = {};
+  D.forEach(d => { const [c, it] = catOf(d[1]); byCat[c] = (byCat[c] || 0) + d[3]; const k = c + '｜' + it; byItem[k] = (byItem[k] || 0) + d[3]; });
+  const cats = CAT_ORDER.filter(c => byCat[c]);
+  const rows = [];
+  cats.forEach(c => {
+    rows.push(['<b>' + esc(c) + '</b>', '<b>' + byCat[c] + '</b>', '<span class="hbar" style="width:' + (byCat[c] / tot * 120) + 'px"></span>' + pct(byCat[c], tot)]);
+    Object.keys(byItem).filter(k => k.indexOf(c + '｜') === 0).sort((a, b) => byItem[b] - byItem[a]).forEach(k => rows.push(['　' + esc(k.split('｜')[1]), byItem[k], pct(byItem[k], tot)]));
+  });
+  table('tbCat', ['缺失類別／項目', '筆數', '比例'], rows, { num: [1] });
+  // 類別按鈕
+  const cur = S.catSel && cats.indexOf(S.catSel) >= 0 ? S.catSel : cats[0];
+  S.catSel = cur;
+  $('catBtns').innerHTML = '<b style="font-size:14px">各類別前 10 大缺失</b>' + cats.map(c => '<button class="b' + (c === cur ? ' on' : '') + '" data-cat="' + esc(c) + '">' + esc(c) + '</button>').join('');
+  if (!cur) { table('tbTop10', ['名次'], []); return; }
+  const ys = [...new Set(D.map(d => byId[d[0]][SI.y]))].sort();
+  const dc = D.filter(d => catOf(d[1])[0] === cur);
+  const catYear = {}, codeYear = {}, codeAll = {};
+  let catAll = 0;
+  dc.forEach(d => {
+    const y = byId[d[0]][SI.y]; catYear[y] = (catYear[y] || 0) + d[3]; catAll += d[3];
+    const o = codeYear[d[1]] = codeYear[d[1]] || {}; o[y] = (o[y] || 0) + d[3]; codeAll[d[1]] = (codeAll[d[1]] || 0) + d[3];
+  });
+  const top = Object.keys(codeAll).filter(Boolean).sort((a, b) => codeAll[b] - codeAll[a]).slice(0, 10);
+  table('tbTop10', ['名次', '代碼', '缺失內容', '項目'].concat(ys.map(y => y + ' 年缺失率')).concat(['筆數', '缺失率（合計）']), top.map((k, i) => {
+    const r = [i + 1, k, esc(String(S.stat.codes[k] || '').replace(/□/g, '').slice(0, 60)), esc(catOf(k)[1])].concat(ys.map(y => codeYear[k][y] ? pct(codeYear[k][y], catYear[y]) : '')).concat([codeAll[k], pct(codeAll[k], catAll)]);
+    r._attr = ' class="click" data-code="' + k + '"'; return r;
+  }), { num: [0].concat(ys.map((y, i) => 4 + i)).concat([4 + ys.length, 5 + ys.length]) });
+}
+$('catBtns').addEventListener('click', e => { const b = e.target.closest('button[data-cat]'); if (b) { S.catSel = b.dataset.cat; renderStats(); } });
+$('tbTop10').addEventListener('click', e => { const tr = e.target.closest('tr[data-code]'); if (tr) showCodeCases(tr.dataset.code); });
+
+/* ===================== 委員明細 ===================== */
+$('tbCom').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-com]'); if (!tr) return;
+  const n = tr.dataset.com, F = statFilter();
+  const l = S.stat.cases.filter(c => F.okCase(c) && c[SI.st] !== '已取消' && c[SI.st] !== '已排定' && (c[SI.c1] === n || c[SI.c2] === n))
+    .sort((a, b) => String(b[SI.date]).localeCompare(String(a[SI.date])));
+  $('stMTitle').textContent = n + '　出席案件 ' + l.length + ' 件';
+  table('stMTable', ['日期', '項目', '單位', '工程名稱', '成績', '等第', '缺失數', '同組委員'], l.map(c => [R(c[SI.date]), esc(c[SI.type]), esc(c[SI.unit]), esc(c[SI.name]), c[SI.score] === '' ? (c[SI.nos] ? '不計分' : '—') : c[SI.score], c[SI.score] === '' ? '' : gr3(c[SI.score]), c[SI.def] || '', esc(c[SI.c1] === n ? c[SI.c2] : c[SI.c1])]), { num: [4, 6] });
+  $('stMask').classList.remove('hide');
+});
+
+/* ===================== 督導月統計表 ===================== */
+function initMonthCtl(ys) {
+  const now = new Date(), cy = now.getFullYear() - 1911;
+  const yy = [...new Set(ys.concat([cy]))].sort((a, b) => b - a);
+  const curY = $('mrY').value || String(cy);
+  $('mrY').innerHTML = yy.map(y => '<option value="' + y + '">' + y + ' 年</option>').join(''); $('mrY').value = curY;
+  if (!$('mrM').value) { $('mrM').innerHTML = Array.from({ length: 12 }, (_, i) => '<option value="' + (i + 1) + '">' + (i + 1) + ' 月</option>').join(''); $('mrM').value = String(now.getDate() <= 10 ? (now.getMonth() || 1) : now.getMonth() + 1); }
+  const types = [...new Set((S.refs ? S.refs.types : []).concat(S.stat.cases.map(c => c[SI.type])).filter(Boolean))];
+  const curT = $('mrT').value || '督導';
+  $('mrT').innerHTML = types.map(t => '<option>' + esc(t) + '</option>').join(''); $('mrT').value = curT;
+  $('mrSave').classList.toggle('hide', !canSetStat());
+  const st = statSet();
+  if (!$('mrRep').value) { $('mrRep').value = st.填表人 || ''; $('mrTitle').value = st.職稱 || ''; $('mrTel').value = st.電話 || ''; }
+}
+['mrY', 'mrM', 'mrT'].forEach(id => $(id).onchange = () => renderMonth());
+const MR_TIERS = [['查核金額以上之標案', 50000, Infinity], ['一千萬元以上\n未達查核金額\n之標案', 10000, 50000], ['公告金額以上\n未達一千萬元\n之標案', 1500, 10000]];
+const mrGrade = c => c[SI.nos] ? '不計分' : c[SI.score] === '' ? '' : c[SI.score] >= 90 ? '優' : c[SI.score] >= 80 ? '甲' : c[SI.score] >= 70 ? '乙' : '丙';
+function monthData() {
+  const y = +$('mrY').value, m = +$('mrM').value, ty = $('mrT').value, wy = y + 1911;
+  const ms = wy + '-' + pad(m), y0 = wy + '-01';
+  const cs = S.stat.cases.filter(c => c[SI.st] !== '已取消' && c[SI.type] === ty && c[SI.date] && c[SI.date].slice(0, 4) === String(wy));
+  const cur = cs.filter(c => c[SI.date].slice(0, 7) === ms), acc = cs.filter(c => c[SI.date].slice(0, 7) >= y0 && c[SI.date].slice(0, 7) <= ms);
+  const t = statSet().years[y] || {};
+  const tot = (t.總件數 || []).slice();
+  const rc = t.複查 || {};
+  let rAcc = 0; for (let i = 1; i <= m; i++) rAcc += +rc[i] || 0;
+  const inT = (l, k) => l.filter(c => c[SI.bud] !== '' && c[SI.bud] >= MR_TIERS[k][1] && c[SI.bud] < MR_TIERS[k][2]);
+  const g = (l, k) => l.filter(c => mrGrade(c) === k).length;
+  const noBud = acc.filter(c => c[SI.bud] === '' || c[SI.bud] < 1500);
+  return { y, m, ty, wy, cur, acc, tot, rCur: +rc[m] || 0, rAcc, inT, g, noBud };
+}
+function renderMonth() {
+  if (!S.stat) return;
+  const d = monthData(), ed = canSetStat();
+  const inp = (id, v) => ed ? '<input type="number" min="0" id="' + id + '" value="' + (v === '' || v == null ? '' : v) + '">' : (v === '' || v == null ? '' : v);
+  const T = [0, 1, 2].map(k => ({ c: d.inT(d.cur, k).length, a: d.inT(d.acc, k).length }));
+  const A = +d.tot[0] || 0;
+  const G = ['優', '甲', '乙', '丙', '不計分'];
+  $('mrT1').innerHTML =
+    '<tr><th colspan="22" style="text-align:left;background:#fff">月份：' + d.m + ' 月　' + d.wy + ' 年（民國 ' + d.y + ' 年）　項目：' + esc(d.ty) + '</th></tr>' +
+    '<tr><th colspan="4">' + MR_TIERS[0][0] + '</th><th colspan="3">' + MR_TIERS[1][0] + '</th><th colspan="3">' + MR_TIERS[2][0] + '</th><th colspan="2">複查</th><th colspan="10">成績統計（含複查）</th></tr>' +
+    '<tr><th>全年度執行總件數</th><th>當月督導件數\n(不含複查件數)</th><th>累計督導件數\n(不含複查件數)</th><th>累計督導\n執行率(%)</th>' +
+    '<th>全年度執行總件數</th><th>當月督導件數\n(不含複查件數)</th><th>累計督導件數\n(不含複查件數)</th>' +
+    '<th>全年度執行總件數</th><th>當月督導件數\n(不含複查件數)</th><th>累計督導件數\n(不含複查件數)</th>' +
+    '<th>當月複查件數</th><th>累計複查件數</th>' + G.map(k => '<th colspan="2">' + k + (k === '不計分' ? '' : '等') + '\n件數</th>').join('') + '</tr>' +
+    '<tr><th>(A)</th><th></th><th>(B)</th><th>(B/A)</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>' + G.map(() => '<th>當月</th><th>累計</th>').join('') + '</tr>' +
+    '<tr><td class="hl">' + inp('mrA0', d.tot[0]) + '</td><td>' + T[0].c + '</td><td>' + T[0].a + '</td><td>' + (A ? (T[0].a / A * 100).toFixed(2) : '—') + '</td>' +
+    '<td class="hl">' + inp('mrA1', d.tot[1]) + '</td><td>' + T[1].c + '</td><td>' + T[1].a + '</td>' +
+    '<td class="hl">' + inp('mrA2', d.tot[2]) + '</td><td>' + T[2].c + '</td><td>' + T[2].a + '</td>' +
+    '<td class="hl">' + inp('mrRc', d.rCur) + '</td><td>' + d.rAcc + '</td>' + G.map(k => '<td>' + d.g(d.cur, k) + '</td><td>' + d.g(d.acc, k) + '</td>').join('') + '</tr>';
+  const nC = T.reduce((a, x) => a + x.c, 0), nA = T.reduce((a, x) => a + x.a, 0);
+  const tiered = d.acc.filter(c => c[SI.bud] !== '' && c[SI.bud] >= 1500);   // 與上表三個金額級距合計一致
+  const gA = k => d.g(tiered, k);
+  const r2 = (n) => nA ? (n / nA * 100).toFixed(2) : '—';
+  $('mrT2').innerHTML = '<tr><th rowspan="2">當月\n件數</th><th rowspan="2">累計\n件數(A)</th><th colspan="2">優等</th><th colspan="2">甲等</th><th colspan="2">乙等</th><th colspan="2">丙等</th></tr>' +
+    '<tr><th>件數</th><th>比例(%)</th><th>件數(B)</th><th>比例(%)\n(B/A)</th><th>件數(C)</th><th>比例(%)\n(C/A)</th><th>件數(D)</th><th>比例(%)\n(D/A)</th></tr>' +
+    '<tr><td>' + nC + '</td><td>' + nA + '</td>' + ['優', '甲', '乙', '丙'].map(k => '<td>' + gA(k) + '</td><td>' + r2(gA(k)) + '</td>').join('') + '</tr>';
+  $('mrWarn').innerHTML = d.noBud.length ? '<div class="mrwarn">本年度累計有 ' + d.noBud.length + ' 件未填發包預算或低於公告金額，未列入金額分級：' + d.noBud.map(c => esc(R(c[SI.date]) + ' ' + c[SI.name])).join('；') + '（可在案件的「工程資訊」補填發包預算）</div>' : '';
+  $('mrInfo').textContent = '資料時間：' + R(S.stat.loadedAt);
+}
+$('mrSave').onclick = async () => {
+  const y = +$('mrY').value, m = +$('mrM').value, v = id => $(id) ? $(id).value : '';
+  try {
+    await api('saveStatSet', { year: y, set: { 總件數: [v('mrA0'), v('mrA1'), v('mrA2')], 複查: { [m]: v('mrRc') || 0 } } });
+    S.stat.settings = await api('saveStatSet', { reporter: { 填表人: $('mrRep').value, 職稱: $('mrTitle').value, 電話: $('mrTel').value } });
+    toast('已儲存'); renderMonth();
+  } catch (e) { toast('儲存失敗：' + errMsg(e), 4000); }
+};
+/* 把有合併儲存格的 HTML 表格轉成 Excel（保留合併、框線、置中） */
+function tableGrid(tb, startRow) {
+  const grid = [], merges = [];
+  [...tb.rows].forEach((tr, ri) => {
+    const r = startRow + ri; grid[r] = grid[r] || [];
+    let ci = 0;
+    [...tr.cells].forEach(td => {
+      while (grid[r][ci] !== undefined) ci++;
+      const inp = td.querySelector('input'), v = inp ? inp.value : td.textContent;
+      const cs = td.colSpan || 1, rs = td.rowSpan || 1;
+      for (let a = 0; a < rs; a++) for (let b = 0; b < cs; b++) { grid[r + a] = grid[r + a] || []; grid[r + a][ci + b] = a || b ? null : { v: v, h: td.tagName === 'TH' }; }
+      if (cs > 1 || rs > 1) merges.push([r, ci, r + rs - 1, ci + cs - 1]);
+      ci += cs;
+    });
+  });
+  return { grid, merges };
+}
+async function downloadXlsxGrid(name, sheet, grid, merges, widths) {
+  const XH = '<' + '?xml version="1.0" encoding="UTF-8" standalone="yes"?' + '>';
+  const xe = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const isNum = v => /^-?(0|[1-9]\d*)(\.\d+)?$/.test(String(v).trim());
+  const nCol = grid.reduce((a, r) => Math.max(a, r ? r.length : 0), 0);   // grid 可能有空列（稀疏陣列）
+  const inMerge = (r, c) => merges.some(m => r >= m[0] && r <= m[2] && c >= m[1] && c <= m[3]);
+  const rowsXml = grid.map((r, ri) => {
+    if (!r) return '';
+    let x = '';
+    for (let ci = 0; ci < nCol; ci++) {
+      const o = r[ci], ref = col(ci) + (ri + 1);
+      if (o === undefined) continue;
+      if (o === null) { x += '<c r="' + ref + '" s="' + (inMerge(ri, ci) ? 1 : 0) + '"/>'; continue; }
+      const st = o.nb ? 0 : o.h ? 2 : 1, v = String(o.v == null ? '' : o.v).trim();
+      x += v === '' ? '<c r="' + ref + '" s="' + st + '"/>' : !o.h && isNum(v) ? '<c r="' + ref + '" s="' + st + '"><v>' + Number(v) + '</v></c>' : '<c r="' + ref + '" t="inlineStr" s="' + st + '"><is><t xml:space="preserve">' + xe(v) + '</t></is></c>';
+    }
+    return '<row r="' + (ri + 1) + '">' + x + '</row>';
+  }).join('');
+  const sheetXml = XH + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>' +
+    Array.from({ length: nCol }, (_, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + ((widths && widths[i]) || 10) + '" customWidth="1"/>').join('') + '</cols><sheetData>' + rowsXml + '</sheetData>' +
+    (merges.length ? '<mergeCells count="' + merges.length + '">' + merges.map(m => '<mergeCell ref="' + col(m[1]) + (m[0] + 1) + ':' + col(m[3]) + (m[2] + 1) + '"/>').join('') + '</mergeCells>' : '') +
+    '<pageSetup orientation="landscape" paperSize="9"/></worksheet>';
+  const sn = xe(String(sheet).replace(/[\\\/?*\[\]:]/g, '').slice(0, 31) || '工作表1');
+  const z = new JSZip();
+  z.file('[Content_Types].xml', XH + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>');
+  z.file('_rels/.rels', XH + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  z.file('xl/workbook.xml', XH + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="' + sn + '" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  z.file('xl/_rels/workbook.xml.rels', XH + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+  z.file('xl/worksheets/sheet1.xml', sheetXml);
+  z.file('xl/styles.xml', XH + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="標楷體"/></font><font><b/><sz val="11"/><name val="標楷體"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+  saveBlob(await z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name + '.xlsx');
+}
+$('mrXlsx').onclick = async () => {
+  const a = tableGrid($('mrT1'), 0), b = tableGrid($('mrT2'), a.grid.length + 1);
+  const grid = a.grid.slice(); b.grid.forEach((r, i) => { if (r) grid[i] = r; });
+  const foot = grid.length + 1;
+  grid[foot] = []; grid[foot][0] = { v: '填表人：' + $('mrRep').value, nb: 1 }; grid[foot][4] = { v: '職稱：' + $('mrTitle').value, nb: 1 }; grid[foot][7] = { v: '電話：' + $('mrTel').value, nb: 1 };
+  const merges = a.merges.concat(b.merges);
+  try { await downloadXlsxGrid('督導月統計表_' + $('mrY').value + '年' + $('mrM').value + '月_' + $('mrT').value, '督導月統計表', grid, merges, [12, 11, 11, 10, 12, 11, 11, 12, 11, 11, 9, 9].concat(Array(10).fill(7))); }
+  catch (e) { toast('Excel 產生失敗：' + errMsg(e), 4000); }
+};
+
 /* 下載 CSV（統計表） */
 $('v-stat').addEventListener('click', e => {
   const b = e.target.closest('[data-csv]'); if (!b) return;
