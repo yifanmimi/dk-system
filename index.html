@@ -214,7 +214,7 @@ button:disabled{opacity:.5;cursor:default}
 .ix tr.cx td{color:#9aa4ae;text-decoration:line-through}
 .st{font-size:12px;padding:1px 7px;border-radius:10px;white-space:nowrap}
 .gd{display:inline-block;font-size:12px;font-weight:600;min-width:1.6em;text-align:center;padding:0 4px;border-radius:4px}.gd.g甲{background:#e6f4ea;color:#2e7d4f}.gd.g乙{background:#fff4e0;color:#9a5b00}.gd.g丙{background:#fdecea;color:#b03a2e}
-.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.日期未定{background:#f3e8fb;color:#7b3fa8}.insp{display:inline-block;padding:0 8px;border-radius:10px;font-size:12px}.insp.y{background:#fff1e0;color:#a0530b}.insp.n{background:#eceff1;color:#6b7785}.lbtn{padding:1px 8px;font-size:12px;white-space:nowrap}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
+.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.日期未定{background:#f3e8fb;color:#7b3fa8}.insp{display:inline-block;padding:0 8px;border-radius:10px;font-size:12px}.insp.y{background:#fff1e0;color:#a0530b}.insp.n{background:#eceff1;color:#6b7785}.lbtn{padding:1px 8px;font-size:12px;white-space:nowrap}.impup{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed #d5dbe1}.improw{display:flex;gap:8px;align-items:center;padding:3px 0}.improw .nm{flex:1;min-width:0;overflow-wrap:anywhere}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
 .tbl{max-height:calc(100vh - 230px);overflow:auto;border:1px solid var(--line);border-radius:8px}
 .cnt{color:var(--mute);font-size:13px}
 /* 期限 */
@@ -1166,7 +1166,6 @@ if(!window.REC_EMBED) recStart();
         <label>本署改善期限</label><div><span class="calc" id="calcImp">—</span> <span class="cnt">（報部前 7 天）</span></div>
         <label>改善完成</label><div><label><input type="checkbox" id="c改善完成"> 已完成</label></div>
         <label>檢驗拆驗</label><select id="c檢驗拆驗"><option value="">未填</option><option>有</option><option>無</option></select>
-        <label>改善檔案連結</label><input class="full" id="c改善檔案" placeholder="https://drive.google.com/…">
         <label>備註</label><div class="full"><textarea id="c備註" rows="2"></textarea></div>
       </div>
       <div id="dlgWarn" class="warnbox hide"></div>
@@ -1183,6 +1182,15 @@ if(!window.REC_EMBED) recStart();
         <div class="row" style="margin-top:6px"><button class="b d" id="btnVoidGo">確定作廢</button><button class="b" id="btnVoidBack">返回</button></div>
       </div>
       <details id="resBox" class="hide"><summary id="resSum">督導結果</summary><div class="log" id="resList" style="max-height:260px">讀取中…</div></details>
+      <details id="impBox" class="hide"><summary id="impSum">改善檔案</summary>
+        <div class="log" id="impList" style="max-height:220px">讀取中…</div>
+        <div id="impUp" class="impup">
+          <label class="b" style="cursor:pointer">選擇檔案…<input type="file" id="impFile" multiple style="display:none"></label>
+          <span class="cnt" id="impPick">可多選；PDF、Word、ODT、圖片、壓縮檔皆可，每檔 20MB 以內</span>
+          <label style="font-size:13px;white-space:nowrap"><input type="checkbox" id="impDone"> 同時標記「改善完成」</label>
+          <button class="b p" id="impGo" disabled>上傳</button>
+        </div>
+      </details>
       <details id="logBox" class="hide"><summary>異動紀錄</summary><div class="log" id="logList">讀取中…</div></details>
     </div>
     <footer>
@@ -1190,7 +1198,7 @@ if(!window.REC_EMBED) recStart();
       <button class="b p hide" id="btnForce">仍要儲存</button>
       <button class="b hide" id="btnRecFile" title="下載上傳的督導／查核紀錄表原檔">紀錄檔案</button>
       <button class="b hide" id="btnRecord" title="到督導紀錄頁上傳紀錄表、修改成績與缺失">修改紀錄</button>
-      <button class="b hide" id="btnOpenImp" title="開新分頁開啟改善檔案連結">改善檔案</button>
+      <button class="b hide" id="btnOpenImp" title="檢視、上傳機關回復的改善檔案">改善檔案</button>
       <button class="b d hide" id="btnCancel">取消行程…</button>
       <button class="b d hide" id="btnVoid">作廢（登錄錯誤）…</button>
       <button class="b hide" id="btnRestore">還原行程</button>
@@ -1523,7 +1531,9 @@ function renderList() {
     '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td>' +
     '<td>' + stBadge(c) + '</td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td>' +
     '<td style="text-align:center">' + (c.檢驗拆驗 ? '<span class="insp ' + (c.檢驗拆驗 === '有' ? 'y' : 'n') + '">' + esc(c.檢驗拆驗) + '</span>' : '') + '</td>' +
-    '<td>' + (/^https?:\/\//i.test(c.改善檔案 || '') ? '<button class="b lbtn" data-url="' + esc(c.改善檔案) + '" title="' + esc(c.改善檔案) + '">開啟</button>' : '') + '</td>' +
+    '<td>' + (+c.改善檔數 > 1 ? '<button class="b lbtn" data-imp="' + c.案件編號 + '" title="共 ' + c.改善檔數 + ' 份，開啟清單">📎 ' + c.改善檔數 + ' 份</button>'
+      : +c.改善檔數 === 1 ? '<button class="b lbtn" data-fid="' + esc(c.改善檔ID) + '" data-fn="' + esc(c.改善檔名) + '" title="' + esc(c.改善檔名) + '">📎 下載</button>'
+      : /^https?:\/\//i.test(c.改善檔案 || '') ? '<button class="b lbtn" data-url="' + esc(c.改善檔案) + '" title="舊資料連結：' + esc(c.改善檔案) + '">🔗 連結</button>' : '') + '</td>' +
     '<td>' + (c.原檔ID && has('督導紀錄檢視') ? '<button class="b lbtn" data-fid="' + esc(c.原檔ID) + '" data-fn="' + esc(c.原檔名) + '" title="' + esc(c.原檔名) + '">📎 原檔</button>' : '') + '</td></tr>').join('') ||
     '<tr><td colspan="12" class="cnt">沒有符合條件的案件</td></tr>';
 }
@@ -1533,6 +1543,7 @@ $('listBody').addEventListener('click', e => {
   // 列上的按鈕：改善檔案（開新分頁）、紀錄表原檔（下載），不開啟對話框
   const u = e.target.closest('[data-url]'); if (u) { e.stopPropagation(); window.open(u.dataset.url, '_blank', 'noopener'); return; }
   const f = e.target.closest('[data-fid]'); if (f) { e.stopPropagation(); downloadRecFile(f); return; }
+  const im = e.target.closest('[data-imp]'); if (im) { e.stopPropagation(); openCase(im.dataset.imp); $('btnOpenImp').click(); return; }
   const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id);
 });
 /* ===================== 下載（CSV／Excel） ===================== */
@@ -2388,10 +2399,50 @@ function renderDue() {
 $('v-due').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) openCase(it.dataset.id); });
 
 /* ===================== 案件對話框 ===================== */
-const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '改善檔案', '檢驗拆驗', '備註'];
-$('btnOpenImp').onclick = () => { const u = $('c改善檔案').value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); else toast('請先填入以 http 開頭的連結', 3000); };
-function syncImpBtn() { $('btnOpenImp').classList.toggle('hide', !/^https?:\/\//i.test($('c改善檔案').value.trim())); }
-$('c改善檔案').addEventListener('input', syncImpBtn);
+const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '檢驗拆驗', '備註'];
+/* ---------- 改善檔案（對話框內區塊：清單、下載、上傳、刪除） ---------- */
+function fileB64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); }); }
+$('btnOpenImp').onclick = () => { $('impBox').open = true; $('impBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+$('impBox').addEventListener('toggle', () => { if ($('impBox').open && S.editing) loadImp(S.editing.案件編號); });
+function impSummary(c) { const n = +(c && c.改善檔數) || 0; $('impSum').textContent = '改善檔案（' + (n ? n + ' 份' : '尚未上傳') + (c && c.改善完成 === true ? '，已改善完成' : '') + '）'; }
+async function loadImp(id) {
+  $('impList').textContent = '讀取中…';
+  try { const r = await api('impList', { id: id }); if (S.editing && S.editing.案件編號 === id) showImp(r); }
+  catch (e) { $('impList').textContent = '讀取失敗：' + errMsg(e); }
+}
+function showImp(r) {
+  const ed = canEdit();
+  $('impList').innerHTML = (r.files.length ? r.files.map(f => '<div class="improw"><span class="nm">📎 ' + esc(f.檔名) + ' <span class="cnt">' + esc(R(f.上傳時間)) + '　' + esc(f.上傳者) + '　' + Math.max(1, Math.round((+f.大小 || 0) / 1024)) + ' KB</span></span>' +
+      '<button class="b lbtn" data-fid="' + esc(f.檔案ID) + '" data-fn="' + esc(f.檔名) + '">下載</button>' + (ed ? '<button class="b d lbtn" data-del="' + esc(f.檔案ID) + '" data-fn="' + esc(f.檔名) + '">刪除</button>' : '') + '</div>').join('')
+    : '<div class="cnt">尚未上傳改善檔案</div>') +
+    (/^https?:\/\//i.test(r.link) ? '<div class="improw"><span class="nm">🔗 原連結（舊資料）</span><button class="b lbtn" data-url="' + esc(r.link) + '">開啟</button></div>' : '');
+  const c = S.editing; if (c) { if (r.ver) c.修改時間 = r.ver; if (r.done) c.改善完成 = true; c.改善檔數 = String(r.files.length || ''); const last = r.files[r.files.length - 1]; c.改善檔ID = last ? last.檔案ID : ''; c.改善檔名 = last ? last.檔名 : ''; impSummary(c); renderList(); }
+}
+$('impList').addEventListener('click', async e => {
+  const u = e.target.closest('[data-url]'); if (u) { window.open(u.dataset.url, '_blank', 'noopener'); return; }
+  const f = e.target.closest('[data-fid]'); if (f) { downloadRecFile(f); return; }
+  const d = e.target.closest('[data-del]'); if (!d || !S.editing) return;
+  if (!confirm('刪除改善檔案「' + d.dataset.fn + '」？\n（雲端硬碟中的檔案會移到垃圾桶，30 天內可由系統擁有者救回）')) return;
+  d.disabled = true;
+  try { showImp(await api('impDelete', { fileId: d.dataset.del })); toast('已刪除', 2500); } catch (err) { toast('刪除失敗：' + errMsg(err), 4000); d.disabled = false; }
+});
+$('impFile').addEventListener('change', () => { const fs = [...$('impFile').files]; $('impPick').textContent = fs.length ? fs.map(f => f.name).join('、') : '可多選；PDF、Word、ODT、圖片、壓縮檔皆可，每檔 20MB 以內'; $('impGo').disabled = !fs.length; });
+$('impGo').onclick = async () => {
+  const c = S.editing, fs = [...$('impFile').files]; if (!c || !fs.length) return;
+  const big = fs.find(f => f.size > 20 * 1024 * 1024); if (big) { toast('「' + big.name + '」超過 20MB', 4000); return; }
+  $('impGo').disabled = true; let r = null, ok = 0;
+  try {
+    for (let i = 0; i < fs.length; i++) {
+      $('impGo').textContent = '上傳中 ' + (i + 1) + '/' + fs.length + '…';
+      r = await api('impUpload', { id: c.案件編號, markDone: $('impDone').checked, file: { name: fs[i].name, mimeType: fs[i].type || 'application/octet-stream', base64: await fileB64(fs[i]) } });
+      ok++;
+    }
+    toast('已上傳 ' + ok + ' 個改善檔案', 3000);
+  } catch (e) { toast('上傳失敗（已完成 ' + ok + ' 個）：' + errMsg(e), 5000); }
+  if ($('impDone').checked && ok) { c.改善完成 = true; $('c改善完成').checked = true; }
+  $('impGo').textContent = '上傳'; $('impFile').value = ''; $('impPick').textContent = '可多選；PDF、Word、ODT、圖片、壓縮檔皆可，每檔 20MB 以內'; $('impDone').checked = false;
+  if (r) showImp(r); else loadImp(c.案件編號);
+};
 function openCase(id, date) {
   const c = id ? S.cases.find(x => x.案件編號 === id) : null;
   S.editing = c;
@@ -2399,7 +2450,6 @@ function openCase(id, date) {
   $('dlgTitle').textContent = c ? c.工程名稱 : '新增行程';
   $('dlgStatus').innerHTML = c ? stBadge(c) + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
   FIELDS.forEach(f => { $('c' + f).value = c ? (c[f] || '') : ''; $('c' + f).disabled = ro; });
-  syncImpBtn();
   $('c改善完成').checked = !!(c && c.改善完成 === true); $('c改善完成').disabled = ro;
   if (!c && date) $('c日期').value = date;
   // 日期未定（預定月份選單：該年度 1～12 月）
@@ -2418,6 +2468,11 @@ function openCase(id, date) {
   $('btnRecord').classList.toggle('hide', !has('督導紀錄編輯') || !c || c.狀態 === '已取消' || c.狀態 === '已作廢');
   const rf = $('btnRecFile'); rf.classList.toggle('hide', !(c && c.原檔ID && has('督導紀錄檢視')));
   if (c && c.原檔ID) { rf.dataset.fid = c.原檔ID; rf.dataset.fn = c.原檔名 || ''; }
+  // 改善檔案：既有案件（非作廢）皆可檢視；有「行程編輯」權限才能上傳、刪除
+  const impOn = !!(c && c.狀態 !== '已作廢');
+  $('btnOpenImp').classList.toggle('hide', !impOn); $('impBox').classList.toggle('hide', !impOn); $('impBox').open = false;
+  $('impUp').classList.toggle('hide', ro); $('impFile').value = ''; $('impGo').disabled = true; $('impDone').checked = false;
+  if (impOn) impSummary(c);
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
