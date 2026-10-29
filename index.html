@@ -1166,7 +1166,7 @@ if(!window.REC_EMBED) recStart();
         <label>本署改善期限</label><div><span class="calc" id="calcImp">—</span> <span class="cnt">（報部前 7 天）</span></div>
         <label>改善完成</label><div><label><input type="checkbox" id="c改善完成"> 已完成</label></div>
         <label>檢驗拆驗</label><select id="c檢驗拆驗"><option value="">未填</option><option>有</option><option>無</option></select>
-        <label>改善檔案連結</label><div class="full" style="display:flex;gap:8px"><input id="c改善檔案" placeholder="https://drive.google.com/…" style="flex:1"><button type="button" class="b" id="btnOpenImp">開啟</button></div>
+        <label>改善檔案連結</label><input class="full" id="c改善檔案" placeholder="https://drive.google.com/…">
         <label>備註</label><div class="full"><textarea id="c備註" rows="2"></textarea></div>
       </div>
       <div id="dlgWarn" class="warnbox hide"></div>
@@ -1188,8 +1188,10 @@ if(!window.REC_EMBED) recStart();
     <footer>
       <button class="b p" id="btnSave">儲存</button>
       <button class="b p hide" id="btnForce">仍要儲存</button>
+      <button class="b hide" id="btnRecFile" title="下載上傳的督導／查核紀錄表原檔">紀錄檔案</button>
+      <button class="b hide" id="btnRecord" title="到督導紀錄頁上傳紀錄表、修改成績與缺失">修改紀錄</button>
+      <button class="b hide" id="btnOpenImp" title="開新分頁開啟改善檔案連結">改善檔案</button>
       <button class="b d hide" id="btnCancel">取消行程…</button>
-      <button class="b hide" id="btnRecord">督導紀錄 →</button>
       <button class="b d hide" id="btnVoid">作廢（登錄錯誤）…</button>
       <button class="b hide" id="btnRestore">還原行程</button>
       <span class="sp"></span>
@@ -2388,7 +2390,7 @@ $('v-due').addEventListener('click', e => { const it = e.target.closest('.it'); 
 /* ===================== 案件對話框 ===================== */
 const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '改善檔案', '檢驗拆驗', '備註'];
 $('btnOpenImp').onclick = () => { const u = $('c改善檔案').value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); else toast('請先填入以 http 開頭的連結', 3000); };
-function syncImpBtn() { $('btnOpenImp').disabled = !/^https?:\/\//i.test($('c改善檔案').value.trim()); }
+function syncImpBtn() { $('btnOpenImp').classList.toggle('hide', !/^https?:\/\//i.test($('c改善檔案').value.trim())); }
 $('c改善檔案').addEventListener('input', syncImpBtn);
 function openCase(id, date) {
   const c = id ? S.cases.find(x => x.案件編號 === id) : null;
@@ -2414,6 +2416,8 @@ function openCase(id, date) {
   $('btnVoid').classList.toggle('hide', !has('行程作廢') || !c || !(c.狀態 === '已排定' || c.狀態 === '待登錄結果' || c.狀態 === '已取消'));
   $('btnRestore').classList.toggle('hide', !c || !((c.狀態 === '已取消' && canEdit()) || (c.狀態 === '已作廢' && has('行程作廢'))));
   $('btnRecord').classList.toggle('hide', !has('督導紀錄編輯') || !c || c.狀態 === '已取消' || c.狀態 === '已作廢');
+  const rf = $('btnRecFile'); rf.classList.toggle('hide', !(c && c.原檔ID && has('督導紀錄檢視')));
+  if (c && c.原檔ID) { rf.dataset.fid = c.原檔ID; rf.dataset.fn = c.原檔名 || ''; }
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
@@ -2769,6 +2773,7 @@ $('btnCancelGo').onclick = async () => {
   try { const r = await api('cancelCase', { id: S.editing.案件編號, reason: reason }); upsert(r.case); toast('已取消 ' + r.case.案件編號); closeDlg(); render(); }
   catch (e) { showErr(errMsg(e)); } finally { loading(false); }
 };
+$('btnRecFile').onclick = e => downloadRecFile(e.currentTarget);
 $('btnRecord').onclick = () => { if (!S.editing) return; const id = S.editing.案件編號; closeDlg(); setView('rec'); REC.open(id); window.scrollTo(0, 0); };
 $('btnVoid').onclick = () => { $('cancelBox').classList.add('hide'); $('voidBox').classList.remove('hide'); $('voidReason').value = ''; $('voidReason').focus(); };
 $('btnVoidBack').onclick = () => $('voidBox').classList.add('hide');
