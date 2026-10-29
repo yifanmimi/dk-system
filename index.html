@@ -2838,8 +2838,12 @@ function checkTender(raw, fileName) {
     const name = String(row[ci('標案名稱')] || '').trim();
     if (!name) { warns.push([line, '標案名稱', '空白，此列不匯入']); return; }
     const no = String(row[ci('編號')] || '').trim();
+    // 不同機關可能用相同編號：編號相同但工程名稱不同視為不同案（僅提醒並列出名稱）；編號與名稱都相同才是重複
     if (!no) warns.push([line, '編號', '空白（' + name + '）']);
-    else if (seen[no]) warns.push([line, '編號', no + ' 重複（同第 ' + seen[no] + ' 列）']); else seen[no] = line;
+    else if (seen[no]) {
+      const p = seen[no], same = p.name === name;
+      warns.push([line, '編號', no + (same ? ' 與第 ' + p.line + ' 列重複（工程名稱也相同：' + name + '）' : ' 與第 ' + p.line + ' 列相同，但工程名稱不同，視為不同案：「' + name + '」／「' + p.name + '」')]);
+    } else seen[no] = { line, name };
     header.forEach((h, j) => {
       if (h.indexOf('日期') >= 0) {
         const d = tdDate(row[j]);
@@ -2855,9 +2859,9 @@ function checkTender(raw, fileName) {
   });
   if (!rows.length) errs.push(['資料', '', '沒有任何資料列']);
   // 與目前清單比較
-  const old = S.tenders || [], oldNo = {}, newNo = {};
-  old.forEach(t => { if (t.編號) oldNo[t.編號] = 1; });
-  rows.forEach(r => { const n = r[ci('編號')]; if (n) newNo[n] = 1; });
+  const old = S.tenders || [], oldNo = {}, newNo = {};   // 以「編號＋工程名稱」比對新增／移除
+  old.forEach(t => { oldNo[t.編號 + '|' + t.名稱] = 1; });
+  rows.forEach(r => { newNo[String(r[ci('編號')] || '').trim() + '|' + String(r[ci('標案名稱')] || '').trim()] = 1; });
   const added = Object.keys(newNo).filter(n => !oldNo[n]).length, removed = Object.keys(oldNo).filter(n => !newNo[n]).length;
   if (old.length && rows.length < old.length * 0.5) warns.push(['資料', '', '新檔只有 ' + rows.length + ' 筆，少於目前 ' + old.length + ' 筆的一半，請確認匯出條件是否正確（上傳會整批取代）']);
   // 依標準欄位順序重排（其他欄不上傳）
@@ -2866,7 +2870,7 @@ function checkTender(raw, fileName) {
 }
 function showTenderReport() {
   const t = S.td, list = t.errs.map(x => ['e', ...x]).concat(t.warns.map(x => ['w', ...x]));
-  $('tdReport').innerHTML = '<div class="tdsum"><span>檔案：' + esc(t.fileName) + '</span><span>資料 ' + t.rows.length + ' 筆（目前 ' + t.oldCount + ' 筆）</span><span>新增 ' + t.added + '、移除 ' + t.removed + '（依編號）</span>' +
+  $('tdReport').innerHTML = '<div class="tdsum"><span>檔案：' + esc(t.fileName) + '</span><span>資料 ' + t.rows.length + ' 筆（目前 ' + t.oldCount + ' 筆）</span><span>新增 ' + t.added + '、移除 ' + t.removed + '（依編號＋工程名稱）</span>' +
     (t.errs.length ? '<span class="e">錯誤 ' + t.errs.length + '</span>' : '<span class="ok">無錯誤</span>') + (t.warns.length ? '<span class="w">提醒 ' + t.warns.length + '</span>' : '') + '</div>' +
     (list.length ? '<div class="tbl" style="max-height:300px"><table class="st"><thead><tr><th>類型</th><th>列</th><th>欄位</th><th>說明</th></tr></thead><tbody>' +
       list.slice(0, 200).map(x => '<tr><td class="' + x[0] + '">' + (x[0] === 'e' ? '錯誤' : '提醒') + '</td><td>' + esc(x[1]) + '</td><td>' + esc(x[2]) + '</td><td>' + esc(x[3]) + '</td></tr>').join('') +
