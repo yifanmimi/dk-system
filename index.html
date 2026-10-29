@@ -671,6 +671,8 @@ function R(x){ if(window.dkRoc) return window.dkRoc(x); return String(x==null?''
 const pad = n => String(n).padStart(2,'0');
 /** 民國日期文字（115年6月16日、115/06/16、115.6.16）→ 2026-06-16 */
 function rocToIso(s){ const m=String(s||'').match(/(\d{2,3})\s*[年\/.\-]\s*(\d{1,2})\s*[月\/.\-]\s*(\d{1,2})/); return m? (+m[1]+1911)+'-'+pad(m[2])+'-'+pad(m[3]) : ''; }
+/** 任何日期格式（2026/6/16、2026-06-16 09:00、115/06/16、Date）→ 2026-06-16 */
+function isoOf(x){ if(x instanceof Date) return x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate()); const t=String(x||''), m=t.match(/(\d{4})\s*[年\/.\-]\s*(\d{1,2})\s*[月\/.\-]\s*(\d{1,2})/); return m? m[1]+'-'+pad(m[2])+'-'+pad(m[3]) : rocToIso(t); }
 function gradeOf(score){ const s=parseFloat(score); if(isNaN(s)) return String(score||'').trim()==='不計分'?'不計分':''; return s>=90?'優等':s>=80?'甲等':s>=70?'乙等':'丙等'; }
 const num = v => { const n=parseFloat(String(v??'').replace(/[,，\s]/g,'')); return isNaN(n)?null:n; };
 function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); }); }
@@ -1049,7 +1051,7 @@ function renderChecks(){
   const bad=r.bad.filter(d=>d.code&&!S.codes[d.code]).length; if(bad) out.push(['warn',`${bad} 項缺失代碼不在缺失扣點表`]);
   if(r.badTotal!==''&&r.badTotal!=null&&+r.badTotal!==tot) out.push(['warn',`扣點合計 ${tot} 點，與紀錄表記載 ${r.badTotal} 點不同`]);
   const f=r.fields||{};
-  if(S.sel && f.date){ const d=rocToIso(f.date); if(d && S.sel['日期'] && d!==S.sel['日期']) out.push(['err',`紀錄表日期 ${R(d)} 與案件日期 ${R(S.sel['日期'])} 不同，請確認是否選錯案件`]); }
+  if(S.sel && f.date){ const d=rocToIso(f.date), sd=isoOf(S.sel['日期']); if(d && sd && d!==sd) out.push(['err',`紀錄表日期 ${R(d)} 與案件日期 ${R(S.sel['日期'])} 不同，請確認是否選錯案件`]); }
   if(S.sel && f.name && nameKey(f.name)!==nameKey(S.sel['工程名稱'])) out.push(['err','紀錄表標案名稱與案件工程名稱不同，請確認是否選錯案件']);
   if(!out.length) out.push(['ok','檢查通過']);
   $('checks').innerHTML=out.map(([c,m])=>`<li class="${c}">${esc(m)}</li>`).join('');
