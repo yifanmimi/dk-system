@@ -214,7 +214,7 @@ button:disabled{opacity:.5;cursor:default}
 .ix tr.cx td{color:#9aa4ae;text-decoration:line-through}
 .st{font-size:12px;padding:1px 7px;border-radius:10px;white-space:nowrap}
 .gd{display:inline-block;font-size:12px;font-weight:600;min-width:1.6em;text-align:center;padding:0 4px;border-radius:4px}.gd.g甲{background:#e6f4ea;color:#2e7d4f}.gd.g乙{background:#fff4e0;color:#9a5b00}.gd.g丙{background:#fdecea;color:#b03a2e}
-.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
+.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.日期未定{background:#f3e8fb;color:#7b3fa8}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
 .tbl{max-height:calc(100vh - 230px);overflow:auto;border:1px solid var(--line);border-radius:8px}
 .cnt{color:var(--mute);font-size:13px}
 /* 期限 */
@@ -363,7 +363,7 @@ table.mr td.hl{background:#fffbe6}
       <select id="fMonth"><option value="">全部月份</option></select>
       <select id="fType"><option value="">全部項目</option></select>
       <select id="fUnit"><option value="">全部單位</option></select>
-      <select id="fStatus"><option value="">全部狀態</option><option>已排定</option><option value="待登錄結果">待登錄</option><option value="已登錄結果">已登錄</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
+      <select id="fStatus"><option value="">全部狀態</option><option>日期未定</option><option>已排定</option><option value="待登錄結果">待登錄</option><option value="已登錄結果">已登錄</option><option>已取消</option><option id="optVoid" class="hide">已作廢</option></select>
       <input id="fKey" placeholder="搜尋工程名稱、委員、編號…" style="min-width:220px">
       <span class="sp"></span><span class="cnt" id="listCnt"></span>
       <button class="b" id="btnCsv">下載 CSV</button><button class="b" id="btnXlsx">下載 Excel</button>
@@ -1232,10 +1232,12 @@ function applyPerms() {
 }
 /** 日期顯示：日期未定者顯示「未定（11 月）」 */
 /* 狀態標籤：縮短文字；已登錄者加上等第（80 以上甲、70–79 乙、未滿 70 丙） */
+/** 顯示用狀態：已排定但尚未訂日期者另列「日期未定」（資料庫仍存「已排定」，統計不受影響） */
+function stOf(c) { return c.狀態 === '已排定' && !c.日期 ? '日期未定' : c.狀態; }
 function stBadge(c) {
-  const short = { '待登錄結果': '待登錄', '已登錄結果': '已登錄' }[c.狀態] || c.狀態;
+  const st = stOf(c), short = { '待登錄結果': '待登錄', '已登錄結果': '已登錄' }[st] || st;
   const n = parseFloat(c.成績), g = c.狀態 === '已登錄結果' && !isNaN(n) ? (n >= 80 ? '甲' : n >= 70 ? '乙' : '丙') : '';
-  return '<span class="st ' + c.狀態 + '">' + short + '</span>' + (g ? ' <span class="gd g' + g + '" title="成績 ' + c.成績 + '">' + g + '</span>' : '');
+  return '<span class="st ' + st + '">' + short + '</span>' + (g ? ' <span class="gd g' + g + '" title="成績 ' + c.成績 + '">' + g + '</span>' : '');
 }
 const dateText = c => R(c.日期) || ('<span class="soon">日期未定</span>' + (c.預定月份 ? '（' + (+c.預定月份.slice(5, 7)) + ' 月）' : ''));
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -1448,7 +1450,7 @@ $('chkCancel').onchange = $('chkDue').onchange = renderCal;
 /* ===================== 清單 ===================== */
 function filtered() {
   const mo = $('fMonth').value, ty = $('fType').value, un = $('fUnit').value, st = $('fStatus').value, k = $('fKey').value.trim().toLowerCase();
-  return S.cases.filter(c => (st === '已作廢' || c.狀態 !== '已作廢') && (!mo || (c.日期 || c.預定月份 || '').slice(5, 7) === mo) && (!ty || c.項目 === ty) && (!un || c.單位 === un) && (!st || c.狀態 === st) &&
+  return S.cases.filter(c => (st === '已作廢' || c.狀態 !== '已作廢') && (!mo || (c.日期 || c.預定月份 || '').slice(5, 7) === mo) && (!ty || c.項目 === ty) && (!un || c.單位 === un) && (!st || stOf(c) === st) &&
     (!k || [c.案件編號, c.工程名稱, c.委員1, c.委員2, c.領隊, c.工作人員, c.單位, R(c.日期)].join(' ').toLowerCase().indexOf(k) >= 0))
     .sort(cmpCase);
 }
@@ -1457,7 +1459,7 @@ function filtered() {
  * 狀態依流程順序；空白一律排最後；同值再依日期新→舊、編號新→舊。排序選擇記在本機瀏覽器。
  */
 const DESC_FIRST = ['案件編號', '日期', '紀錄表期限', '報部改善期限'];
-const ST_ORDER = ['已排定', '待登錄結果', '已登錄結果', '已取消', '已作廢'];
+const ST_ORDER = ['日期未定', '已排定', '待登錄結果', '已登錄結果', '已取消', '已作廢'];
 S.sort = (() => { try { return JSON.parse(localStorage.getItem('dk_sort_list')) || null; } catch (e) { return null; } })() || { k: '日期', d: -1 };
 if (S.sort.k === '案件編號') S.sort = { k: '日期', d: -1 };   // 案件編號欄已不顯示
 const coll = new Intl.Collator('zh-Hant-TW', { numeric: true });
@@ -1483,7 +1485,7 @@ function unitRank(name) {
 }
 function cmpUnit(a, b) { return unitRank(a) - unitRank(b) || String(a).localeCompare(String(b), 'zh-Hant-TW'); }
 window.dkUnitRank = unitRank;   // 督導紀錄分頁共用
-function sortVal(c, k) { return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
+function sortVal(c, k) { return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(stOf(c)) : (c[k] == null ? '' : c[k]); }
 function cmpCase(a, b) {
   // 日期未定的案件固定排在最上面（方便補排日期）；彼此間依預定月份、工程名稱
   const ua = !a.日期, ub = !b.日期;
@@ -1564,7 +1566,7 @@ async function downloadXlsx(name, sheet, head, rows) {
 /* 行程清單：目前篩選結果 */
 function listExport() {
   const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '成績等級', '缺失數', '標案編號', '所屬計畫', '縣市鄉鎮', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
-  return { head: cols, rows: filtered().map(c => cols.map(k => k === '成績等級' ? gradeOf(c.成績) : c[k] === true ? '是' : c[k] === false ? '' : c[k])) };
+  return { head: cols, rows: filtered().map(c => cols.map(k => k === '成績等級' ? gradeOf(c.成績) : k === '狀態' ? stOf(c) : c[k] === true ? '是' : c[k] === false ? '' : c[k])) };
 }
 $('btnCsv').onclick = () => { const d = listExport(); downloadCsv(S.year + '年度行程清單', d.head, d.rows); };
 $('btnXlsx').onclick = async () => {
