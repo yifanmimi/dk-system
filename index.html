@@ -337,7 +337,7 @@ table.mr td.hl{background:#fffbe6}
     <button data-v="due" data-p="行程檢視">期限提醒</button>
     <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
-    <button data-v="month" data-p="統計">督導月統計表</button>
+    <button data-v="month" data-p="督導月統計表">督導月統計表</button>
     <button data-v="admin" class="hide" id="navAdmin" data-p="帳號管理,系統維護">管理</button>
   </nav>
 </header>
@@ -410,7 +410,7 @@ table.mr td.hl{background:#fffbe6}
       <div class="card" id="tenderCard" style="grid-column:1/-1">
         <h3 style="margin-top:0">標案清單更新</h3>
         <div class="cnt" id="tdStatus">讀取中…</div>
-        <div class="row" style="margin-top:10px"><input type="file" id="tdFile" accept=".xlsx,.csv"><span class="cnt">請上傳工程會「標案自選欄位表」匯出的 Excel（.xlsx）或 CSV；.xls 請先用 Excel 另存為 .xlsx</span></div>
+        <div class="row" style="margin-top:10px"><input type="file" id="tdFile" accept=".ods,.xlsx,.csv"><span class="cnt">請上傳工程會「標案自選欄位表」匯出檔（.ods、.xlsx 或 CSV），須含標準格式 28 個欄位：序號、主管機關、主辦機關、執行機關、編號、標案名稱、列管年度、計畫主管機關、計畫主辦機關、計畫名稱、發包預算、決標金額、變更設計後契約金額、規劃單位、設計單位、監造單位、專案管理單位、得標廠商、工程類別、工程概要、縣市鄉鎮、預定開工日期、實際開工日期、預定完工日期、變更設計後預定完工日期、工期類別、總天數、實際完工日期</span></div>
         <div id="tdReport" class="hide" style="margin-top:10px"></div>
       </div>
     </div>
@@ -1715,8 +1715,8 @@ const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視'], ['行程編輯', '新增、修改、取消、還原'], ['行程作廢', '作廢及檢視已作廢']]],
   ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、AI 辨識、轉檔、存雲端']]],
-  ['統計', [['統計', '統計分頁'], ['委員統計', '委員統計表']]],
-  ['管理', [['帳號管理', '帳號與權限'], ['系統維護', '日曆同步、國定假日、搬遷清單']]]
+  ['統計', [['統計', '統計分頁'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
+  ['管理', [['帳號管理', '帳號與權限'], ['系統維護', '日曆同步、國定假日、搬遷清單、標案清單上傳']]]
 ];
 /** 依權限顯示分頁；目前分頁不能用時切到第一個可用的分頁 */
 function applyPerms() {
@@ -2269,7 +2269,7 @@ $('stMask').addEventListener('mousedown', e => { if (e.target === $('stMask')) $
 const gr3 = x => x >= 80 ? '甲' : x >= 70 ? '乙' : '丙';
 const amtLv = b => b === '' || b == null ? '未填發包預算' : b < 10000 ? '未達1千萬元' : b < 50000 ? '1千萬元以上5千萬元以下' : '查核金額(5千萬元)以上';
 const statSet = () => (S.stat && S.stat.settings) || { years: {} };
-const canSetStat = () => has('行程編輯') || has('系統維護');
+const canSetStat = () => has('統計設定');
 const ymdOf = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const monthEnd = (wy, m) => ymdOf(new Date(wy, m, 0));
 /* 缺失代碼 → [類別, 項目]（缺失扣點表沒有的代碼依章節推定） */
@@ -2718,9 +2718,11 @@ async function loadTenderInfo(nameChanged) {
     : '✔ 標案清單有此工程' + (n ? '，已帶入標示「標案清單」的欄位' : '') + '；各欄位可再修改，儲存後寫入資料庫。';
 }
 /* ===================== 標案清單更新：讀檔 → 檢查各欄位 → 確認後上傳 ===================== */
-const TD_REQ = ['編號', '標案名稱', '執行機關', '縣市鄉鎮', '實際開工日期', '預定完工日期'];
-const TD_OPT = ['計畫名稱', '發包預算', '決標金額', '設計單位', '監造單位', '專案管理單位', '得標廠商', '變更設計後預定完工日期', '實際完工日期'];
-const TD_NUM = ['發包預算', '決標金額', '結算金額', '決算金額'];
+/* 標案清單標準格式（工程會「標案自選欄位表」，115/10/29 起以此為準；與後台 TENDER_FIELDS 相同） */
+const TD_FIELDS = ['序號', '主管機關', '主辦機關', '執行機關', '編號', '標案名稱', '列管年度', '計畫主管機關', '計畫主辦機關', '計畫名稱',
+  '發包預算', '決標金額', '變更設計後契約金額', '規劃單位', '設計單位', '監造單位', '專案管理單位', '得標廠商', '工程類別', '工程概要',
+  '縣市鄉鎮', '預定開工日期', '實際開工日期', '預定完工日期', '變更設計後預定完工日期', '工期類別', '總天數', '實際完工日期'];
+const TD_NUM = ['發包預算', '決標金額', '變更設計後契約金額', '總天數'];
 async function loadTenderStatus() {
   try {
     const r = await api('tenderStatus', {}), i = r.info || {};
@@ -2755,6 +2757,32 @@ async function readXlsxRows(file) {
   });
   return Array.from(rows, r => r || []);
 }
+/** 讀 .ods（OpenDocument 試算表；工程會匯出檔）→ 二維陣列：日期取 date-value（yyyy-mm-dd）、數值取數字、文字多段以換行連接 */
+async function readOdsRows(file) {
+  const z = await JSZip.loadAsync(file);
+  const f = z.file('content.xml'); if (!f) throw new Error('不是有效的 .ods 檔');
+  const doc = new DOMParser().parseFromString(await f.async('string'), 'application/xml');
+  const T = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0', O = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0', X = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';
+  const tb = doc.getElementsByTagNameNS(T, 'table')[0]; if (!tb) throw new Error('.ods 檔沒有工作表');
+  const rows = [];
+  for (const tr of tb.getElementsByTagNameNS(T, 'table-row')) {
+    const out = [];
+    for (const td of tr.children) {
+      if (td.localName !== 'table-cell' && td.localName !== 'covered-table-cell') continue;
+      const rep = Math.min(+(td.getAttributeNS(T, 'number-columns-repeated') || 1), 200);
+      const ty = td.getAttributeNS(O, 'value-type');
+      let v = '';
+      if (ty === 'date') v = String(td.getAttributeNS(O, 'date-value') || '').slice(0, 10);
+      else if (ty === 'float' || ty === 'currency' || ty === 'percentage') v = +td.getAttributeNS(O, 'value');
+      else if (ty) v = [...td.getElementsByTagNameNS(X, 'p')].map(p => p.textContent).join('\n');
+      for (let i = 0; i < rep; i++) out.push(v);
+    }
+    while (out.length && (out[out.length - 1] === '' || out[out.length - 1] == null)) out.pop();
+    const rr = Math.min(+(tr.getAttributeNS(T, 'number-rows-repeated') || 1), out.length ? 1000 : 1);   // 結尾大量空白列只記一列
+    for (let i = 0; i < rr; i++) rows.push(out.slice());
+  }
+  return rows;
+}
 /** 讀 CSV（UTF-8 或 Big5） */
 async function readCsvRows(file) {
   const buf = await file.arrayBuffer();
@@ -2784,9 +2812,10 @@ $('tdFile').onchange = async () => {
   $('tdReport').classList.remove('hide'); $('tdReport').innerHTML = '<div class="cnt">讀取與檢查中…</div>';
   try {
     let rows;
-    if (/\.xlsx$/i.test(f.name)) rows = await readXlsxRows(f);
+    if (/\.ods$/i.test(f.name)) rows = await readOdsRows(f);
+    else if (/\.xlsx$/i.test(f.name)) rows = await readXlsxRows(f);
     else if (/\.csv$/i.test(f.name)) rows = await readCsvRows(f);
-    else throw new Error('不支援的檔案格式，請用 .xlsx 或 .csv（.xls 請先另存為 .xlsx）');
+    else throw new Error('不支援的檔案格式，請用 .ods、.xlsx 或 .csv（.xls 請先另存為 .xlsx）');
     S.td = checkTender(rows, f.name); showTenderReport();
   } catch (e) { S.td = null; $('tdReport').innerHTML = '<div class="errbox">' + esc(errMsg(e)) + '</div>'; }
 };
@@ -2796,10 +2825,10 @@ function checkTender(raw, fileName) {
   const hi = raw.slice(0, 15).findIndex(r => r.some(v => String(v).replace(/\s+/g, '') === '標案名稱') && r.some(v => String(v).replace(/\s+/g, '') === '編號'));
   if (hi < 0) throw new Error('找不到欄名列（需有「編號」「標案名稱」欄），請確認是工程會「標案自選欄位表」匯出的檔案');
   const header = raw[hi].map((h, i) => String(h || '').replace(/\s+/g, '') || ('欄' + (i + 1)));
-  const miss = TD_REQ.filter(k => header.indexOf(k) < 0);
-  if (miss.length) errs.push(['欄位', '', '缺少必要欄位：' + miss.join('、')]);
-  const missOpt = TD_OPT.filter(k => header.indexOf(k) < 0);
-  if (missOpt.length) warns.push(['欄位', '', '缺少建議欄位（相關資料將空白）：' + missOpt.join('、')]);
+  const miss = TD_FIELDS.filter(k => header.indexOf(k) < 0);
+  if (miss.length) errs.push(['欄位', '', '與標準格式不符，缺少欄位：' + miss.join('、') + '（請用工程會「標案自選欄位表」勾選相同的 28 個欄位匯出）']);
+  const extra = header.filter(k => TD_FIELDS.indexOf(k) < 0 && !/^欄\d+$/.test(k));
+  if (extra.length) warns.push(['欄位', '', '標準格式以外的欄位不會匯入：' + extra.join('、')]);
   const ci = k => header.indexOf(k);
   const rows = [], seen = {};
   raw.slice(hi + 1).forEach((r, k) => {
@@ -2831,7 +2860,9 @@ function checkTender(raw, fileName) {
   rows.forEach(r => { const n = r[ci('編號')]; if (n) newNo[n] = 1; });
   const added = Object.keys(newNo).filter(n => !oldNo[n]).length, removed = Object.keys(oldNo).filter(n => !newNo[n]).length;
   if (old.length && rows.length < old.length * 0.5) warns.push(['資料', '', '新檔只有 ' + rows.length + ' 筆，少於目前 ' + old.length + ' 筆的一半，請確認匯出條件是否正確（上傳會整批取代）']);
-  return { fileName, header, rows, errs, warns, added, removed, oldCount: old.length };
+  // 依標準欄位順序重排（其他欄不上傳）
+  const pos = TD_FIELDS.map(ci);
+  return { fileName, header: TD_FIELDS.slice(), rows: miss.length ? rows : rows.map(r => pos.map(j => r[j])), errs, warns, added, removed, oldCount: old.length };
 }
 function showTenderReport() {
   const t = S.td, list = t.errs.map(x => ['e', ...x]).concat(t.warns.map(x => ['w', ...x]));
@@ -2990,7 +3021,7 @@ function setPerms(list) { permBoxes().forEach(b => { b.checked = list.indexOf(b.
 $('uPerms').addEventListener('change', e => {
   const v = e.target.value, on = e.target.checked, box = x => permBoxes().find(b => b.value === x);
   // 督導結果顯示在清單的行程中，所以「督導紀錄檢視」需要「行程檢視」
-  const need = { '行程編輯': '行程檢視', '行程作廢': '行程檢視', '督導紀錄檢視': '行程檢視', '督導紀錄編輯': '督導紀錄檢視', '委員統計': '統計' };
+  const need = { '行程編輯': '行程檢視', '行程作廢': '行程檢視', '督導紀錄檢視': '行程檢視', '督導紀錄編輯': '督導紀錄檢視', '委員統計': '統計' };   // 「統計設定」可單獨給（例如只管月統計表）
   const on1 = x => { box(x).checked = true; if (need[x]) on1(need[x]); };
   const off1 = x => { box(x).checked = false; Object.keys(need).forEach(k => { if (need[k] === x) off1(k); }); };
   if (on && need[v]) on1(need[v]);
