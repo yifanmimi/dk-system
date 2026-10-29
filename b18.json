@@ -1,0 +1,1 @@
+[[17862, 17862, "/** 督導紀錄頁：標案清單中某工程的完整資料（標準 28 欄），自動帶入紀錄表基本資料 */\nfunction apiTenderRow(args) {\n  const t = findTender_(String(args.name || '').trim(), String(args.no || '').trim());\n  if (!t) return null;\n  const o = {}; TENDER_FIELDS.forEach(k => { o[k] = t[k] == null ? '' : String(t[k]); });\n  return o;\n}\n"], [34677, 34677, "  tenderRow: [apiTenderRow, ['督導紀錄編輯']],\n"]]

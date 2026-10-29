@@ -654,7 +654,7 @@ table.mr td.hl{background:#fffbe6}
       </div>
     </details>
     <div class="row" style="margin-top:10px">
-      <label class="muted">（選用）標案自選欄位表 .xlsx，補帶工程概要、開工／完工日期：</label>
+      <label class="muted">（選用）系統會自動由資料庫標案清單補帶工程概要、開工／完工日期、預算與廠商；查不到時可另選自選欄位表 .xlsx：</label>
       <input type="file" id="xlsxInput" accept=".xlsx">
       <span id="xlsxMsg" class="muted"></span>
     </div>
@@ -890,7 +890,7 @@ function selectCase(i){
   if(S.xlsxRows) applyXlsx();
   $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b>　<span class="muted">${esc(R(c._date)||'日期未定')}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc(S.base['督導委員'])}｜領隊：${esc(c['領隊'])}</span>${Object.keys(d).length?'':'<br><span class="badge warn">清單連結查無此案的預算、廠商資料，請手動補填</span>'}</div>`;
   renderCases(); renderBase(); renderFiles(); renderItems(); renderPreview();
-  loadSaved(c);
+  loadSaved(c); loadTenderRow(c);
 }
 
 /* ---------- 已儲存的督導紀錄：選案件時自動帶入 ----------
@@ -1240,14 +1240,27 @@ function applyXlsx(){
   if(!S.sel||!S.xlsxRows) return;
   const r=S.xlsxRows.find(x=>String(x['標案名稱']).trim()===S.sel['工程名稱']);
   if(!r){ $('xlsxMsg').textContent='自選欄位表中查無此案'; return; }
+  applyTender(r);
+  $('xlsxMsg').textContent='已由自選欄位表補帶資料';
+}
+/** 由標案資料（資料庫標案清單或自選欄位表，欄名同工程會標準格式）補帶空白的基本資料 */
+function applyTender(r){
   const fill=(k,v)=>{ if(v && !S.base[k]) S.base[k]=v; };
   fill('工程概要', String(r['工程概要']||'').split(/\n/).map(x=>x.replace(/^\s*\d+[.、]\s*/,'').replace(/：/g,'').trim()).filter(Boolean).join('、'));
   fill('開工日期', rocDotFromDate(excelDate(r['實際開工日期'])));
   fill('完工日期', rocDotFromDate(excelDate(r['變更設計後預定完工日期']||r['預定完工日期'])));
   if(r['計畫名稱'] && r['計畫名稱']!=='無') fill('列管計畫名稱', r['計畫名稱']);
-  fill('發包預算', r['發包預算']); fill('契約金額', r['決標金額']);
+  fill('發包預算', r['發包預算']); fill('契約金額', r['變更設計後契約金額']||r['決標金額']);   // 有變更設計就用變更後契約金額
   fill('設計單位', r['設計單位']); fill('監造單位', r['監造單位']); fill('承包商', r['得標廠商']); fill('地點', r['縣市鄉鎮']);
-  $('xlsxMsg').textContent='已由自選欄位表補帶資料';
+}
+/** 選案件時自動查資料庫的標案清單補帶（不必另外上傳自選欄位表） */
+async function loadTenderRow(c){
+  try{
+    const r = await gs('api','tenderRow',{ name: c['工程名稱'] });
+    if(!r || S.sel!==c) return;
+    applyTender(r); renderBase(); renderPreview();
+    $('xlsxMsg').textContent='已由資料庫標案清單補帶工程概要、開完工日期、預算、廠商等空白欄位';
+  }catch(e){ /* 查不到或沒有權限時維持手動填寫 */ }
 }
 
 /* =====================================================================
