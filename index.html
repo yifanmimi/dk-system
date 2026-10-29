@@ -1986,6 +1986,10 @@ function cmpUnit(a, b) { return unitRank(a) - unitRank(b) || String(a).localeCom
 window.dkUnitRank = unitRank;   // 督導紀錄分頁共用
 function sortVal(c, k) { return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(c.狀態) : (c[k] == null ? '' : c[k]); }
 function cmpCase(a, b) {
+  // 日期未定的案件固定排在最上面（方便補排日期）；彼此間依預定月份、工程名稱
+  const ua = !a.日期, ub = !b.日期;
+  if (ua !== ub) return ua ? -1 : 1;
+  if (ua) return (a.預定月份 || '9999').localeCompare(b.預定月份 || '9999') || coll.compare(a.工程名稱 || '', b.工程名稱 || '');
   const k = S.sort.k, d = S.sort.d, va = sortVal(a, k), vb = sortVal(b, k);
   const ea = va === '' || va === -1, eb = vb === '' || vb === -1;
   if (ea !== eb) return ea ? 1 : -1;
