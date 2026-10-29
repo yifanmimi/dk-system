@@ -214,7 +214,7 @@ button:disabled{opacity:.5;cursor:default}
 .ix tr.cx td{color:#9aa4ae;text-decoration:line-through}
 .st{font-size:12px;padding:1px 7px;border-radius:10px;white-space:nowrap}
 .gd{display:inline-block;font-size:12px;font-weight:600;min-width:1.6em;text-align:center;padding:0 4px;border-radius:4px}.gd.g甲{background:#e6f4ea;color:#2e7d4f}.gd.g乙{background:#fff4e0;color:#9a5b00}.gd.g丙{background:#fdecea;color:#b03a2e}
-.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.日期未定{background:#f3e8fb;color:#7b3fa8}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
+.st.已排定{background:#e8f0fa;color:#1f5fa8}.st.日期未定{background:#f3e8fb;color:#7b3fa8}.insp{display:inline-block;padding:0 8px;border-radius:10px;font-size:12px}.insp.y{background:#fff1e0;color:#a0530b}.insp.n{background:#eceff1;color:#6b7785}.lbtn{padding:1px 8px;font-size:12px;white-space:nowrap}.st.待登錄結果{background:#fff4e0;color:#9a5b00}.st.已登錄結果{background:#e6f4ea;color:#2e7d4f}.st.已取消{background:#eceff1;color:#6b7785}.st.已作廢{background:#fdecea;color:#b03a2e}
 .tbl{max-height:calc(100vh - 230px);overflow:auto;border:1px solid var(--line);border-radius:8px}
 .cnt{color:var(--mute);font-size:13px}
 /* 期限 */
@@ -369,7 +369,7 @@ table.mr td.hl{background:#fffbe6}
       <button class="b" id="btnCsv">下載 CSV</button><button class="b" id="btnXlsx">下載 Excel</button>
     </div>
     <div class="tbl"><table><thead><tr>
-      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th>
+      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th><th data-k="檢驗拆驗">檢驗拆驗</th><th>改善檔案</th><th>紀錄表</th>
     </tr></thead><tbody id="listBody"></tbody></table></div>
   </section>
 
@@ -1165,7 +1165,8 @@ if(!window.REC_EMBED) recStart();
         <label>報部改善期限</label><input type="date" id="c報部改善期限">
         <label>本署改善期限</label><div><span class="calc" id="calcImp">—</span> <span class="cnt">（報部前 7 天）</span></div>
         <label>改善完成</label><div><label><input type="checkbox" id="c改善完成"> 已完成</label></div>
-        <label>改善檔案連結</label><input id="c改善檔案" placeholder="https://drive.google.com/…">
+        <label>檢驗拆驗</label><select id="c檢驗拆驗"><option value="">未填</option><option>有</option><option>無</option></select>
+        <label>改善檔案連結</label><div class="full" style="display:flex;gap:8px"><input id="c改善檔案" placeholder="https://drive.google.com/…" style="flex:1"><button type="button" class="b" id="btnOpenImp">開啟</button></div>
         <label>備註</label><div class="full"><textarea id="c備註" rows="2"></textarea></div>
       </div>
       <div id="dlgWarn" class="warnbox hide"></div>
@@ -1518,12 +1519,20 @@ function renderList() {
   $('listBody').innerHTML = list.map(c => '<tr data-id="' + c.案件編號 + '"' + (c.狀態 === '已取消' || c.狀態 === '已作廢' ? ' class="cx"' : '') + '>' +
     '<td>' + dateText(c) + '</td><td>' + esc(c.項目) + '</td><td>' + esc(c.單位) + '</td><td>' + esc(c.工程名稱) + '</td>' +
     '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td>' +
-    '<td>' + stBadge(c) + '</td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td></tr>').join('') ||
-    '<tr><td colspan="9" class="cnt">沒有符合條件的案件</td></tr>';
+    '<td>' + stBadge(c) + '</td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td>' +
+    '<td style="text-align:center">' + (c.檢驗拆驗 ? '<span class="insp ' + (c.檢驗拆驗 === '有' ? 'y' : 'n') + '">' + esc(c.檢驗拆驗) + '</span>' : '') + '</td>' +
+    '<td>' + (/^https?:\/\//i.test(c.改善檔案 || '') ? '<button class="b lbtn" data-url="' + esc(c.改善檔案) + '" title="' + esc(c.改善檔案) + '">開啟</button>' : '') + '</td>' +
+    '<td>' + (c.原檔ID && has('督導紀錄檢視') ? '<button class="b lbtn" data-fid="' + esc(c.原檔ID) + '" data-fn="' + esc(c.原檔名) + '" title="' + esc(c.原檔名) + '">📎 原檔</button>' : '') + '</td></tr>').join('') ||
+    '<tr><td colspan="12" class="cnt">沒有符合條件的案件</td></tr>';
 }
 ['fMonth', 'fType', 'fUnit', 'fStatus'].forEach(id => $(id).onchange = renderList);
 $('fKey').oninput = renderList;
-$('listBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id); });
+$('listBody').addEventListener('click', e => {
+  // 列上的按鈕：改善檔案（開新分頁）、紀錄表原檔（下載），不開啟對話框
+  const u = e.target.closest('[data-url]'); if (u) { e.stopPropagation(); window.open(u.dataset.url, '_blank', 'noopener'); return; }
+  const f = e.target.closest('[data-fid]'); if (f) { e.stopPropagation(); downloadRecFile(f); return; }
+  const tr = e.target.closest('tr[data-id]'); if (tr) openCase(tr.dataset.id);
+});
 /* ===================== 下載（CSV／Excel） ===================== */
 /** 等第：80 分以上甲、70–79 乙、未滿 70 丙 */
 const gradeOf = sc => { const n = parseFloat(sc); return sc === '' || sc == null || isNaN(n) ? '' : n >= 80 ? '甲' : n >= 70 ? '乙' : '丙'; };
@@ -1565,7 +1574,7 @@ async function downloadXlsx(name, sheet, head, rows) {
 }
 /* 行程清單：目前篩選結果 */
 function listExport() {
-  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '成績', '成績等級', '缺失數', '標案編號', '所屬計畫', '縣市鄉鎮', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
+  const cols = ['案件編號', '日期', '預定月份', '項目', '單位', '工程名稱', '委員1', '委員2', '領隊', '工作人員', '狀態', '取消原因', '紀錄表期限', '報部改善期限', '本署改善期限', '改善完成', '檢驗拆驗', '成績', '成績等級', '缺失數', '標案編號', '所屬計畫', '縣市鄉鎮', '發包預算', '契約金額', '金額等級', '設計單位', '監造單位', '承包商', '專案管理單位', '自辦委外'];
   return { head: cols, rows: filtered().map(c => cols.map(k => k === '成績等級' ? gradeOf(c.成績) : k === '狀態' ? stOf(c) : c[k] === true ? '是' : c[k] === false ? '' : c[k])) };
 }
 $('btnCsv').onclick = () => { const d = listExport(); downloadCsv(S.year + '年度行程清單', d.head, d.rows); };
@@ -2377,7 +2386,10 @@ function renderDue() {
 $('v-due').addEventListener('click', e => { const it = e.target.closest('.it'); if (it) openCase(it.dataset.id); });
 
 /* ===================== 案件對話框 ===================== */
-const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '改善檔案', '備註'];
+const FIELDS = ['日期', '項目', '單位', '工作人員', '工程名稱', '委員1', '委員2', '領隊', '所屬計畫', '報部改善期限', '改善檔案', '檢驗拆驗', '備註'];
+$('btnOpenImp').onclick = () => { const u = $('c改善檔案').value.trim(); if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); else toast('請先填入以 http 開頭的連結', 3000); };
+function syncImpBtn() { $('btnOpenImp').disabled = !/^https?:\/\//i.test($('c改善檔案').value.trim()); }
+$('c改善檔案').addEventListener('input', syncImpBtn);
 function openCase(id, date) {
   const c = id ? S.cases.find(x => x.案件編號 === id) : null;
   S.editing = c;
@@ -2385,6 +2397,7 @@ function openCase(id, date) {
   $('dlgTitle').textContent = c ? c.工程名稱 : '新增行程';
   $('dlgStatus').innerHTML = c ? stBadge(c) + (c.取消原因 ? ' <span class="cnt">原因：' + esc(c.取消原因) + '</span>' : '') : '';
   FIELDS.forEach(f => { $('c' + f).value = c ? (c[f] || '') : ''; $('c' + f).disabled = ro; });
+  syncImpBtn();
   $('c改善完成').checked = !!(c && c.改善完成 === true); $('c改善完成').disabled = ro;
   if (!c && date) $('c日期').value = date;
   // 日期未定（預定月份選單：該年度 1～12 月）
@@ -2788,8 +2801,8 @@ function showRes(r) {
     (has('督導紀錄編輯') ? '<div class="cnt">按下方「督導紀錄 →」可上傳紀錄表、查閱或修改結果。</div>' : '');
 }
 /* 下載已上傳的紀錄表原檔 */
-$('resList').addEventListener('click', async e => {
-  const b = e.target.closest('[data-fid]'); if (!b) return;
+$('resList').addEventListener('click', e => { const b = e.target.closest('[data-fid]'); if (b) downloadRecFile(b); });
+async function downloadRecFile(b) {
   b.disabled = true;
   try {
     const f = await api('djFile', { fileId: b.dataset.fid });
@@ -2797,7 +2810,7 @@ $('resList').addEventListener('click', async e => {
     saveBlob(new Blob([u], { type: f.mimeType || 'application/octet-stream' }), f.name || b.dataset.fn);
   } catch (err) { toast('下載失敗：' + errMsg(err), 4000); }
   b.disabled = false;
-});
+}
 $('logBox').addEventListener('toggle', async () => {
   if (!$('logBox').open || !S.editing) return;
   try {
