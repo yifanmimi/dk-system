@@ -867,6 +867,9 @@ function renderFile(){
 async function extractLines(f){
   if(f.ext==='docx'){
     const z=await JSZip.loadAsync(f.file); const x=await z.file('word/document.xml').async('string');
+    // 工程會系統匯出的 .docx 內容放在 altChunk（word/*.mht，內含 HTML），本文幾乎是空的
+    const mht=Object.keys(z.files).find(n=>/^word\/.*\.(mht|mhtml|html?)$/i.test(n));
+    if(mht && x.replace(/<[^>]+>/g,'').trim().length<50) return htmlLines(mhtHtml(await z.file(mht).async('string')));
     return xmlParagraphs(x,'w:p','w:t',['w:tab'],['w:br','w:cr']);
   }
   if(f.ext==='odt'){
@@ -885,6 +888,21 @@ async function extractLines(f){
   const mime = f.ext==='pdf' ? 'application/pdf' : 'application/msword';
   const text = await gs('convertToText', await blobToB64(f.file), mime, f.name);
   return String(text||'').split(/\r?\n/).map(s=>s.replace(/\s+$/,'')).filter(s=>s.trim());
+}
+/** MHT（MIME multipart）取出 text/html 部分並解碼（quoted-printable／base64，UTF-8） */
+function mhtHtml(m){
+  if(!/^MIME-Version|Content-Type:\s*multipart/i.test(m.slice(0,500))) return m;
+  const part=m.split(/\r?\n--[^\r\n]+/).find(p=>/Content-Type:\s*text\/html/i.test(p)) || m;
+  const head=part.slice(0, part.search(/\r?\n\r?\n/)), body=part.replace(/^[\s\S]*?\r?\n\r?\n/,'');
+  let bytes;
+  if(/Content-Transfer-Encoding:\s*base64/i.test(head)){ const b=atob(body.replace(/\s+/g,'')); bytes=Uint8Array.from(b,c=>c.charCodeAt(0)); }
+  else if(/quoted-printable/i.test(head)){
+    const qp=body.replace(/=\r?\n/g,''), out=[], enc=new TextEncoder();
+    for(let i=0;i<qp.length;i++){ const c=qp[i]; if(c==='=' && /^[0-9A-F]{2}$/i.test(qp.substr(i+1,2))){ out.push(parseInt(qp.substr(i+1,2),16)); i+=2; } else enc.encode(c).forEach(b=>out.push(b)); }
+    bytes=new Uint8Array(out);
+  } else return body;
+  const cs=(head.match(/charset="?([\w-]+)/i)||[])[1]||'utf-8';
+  try{ return new TextDecoder(cs).decode(bytes); }catch(e){ return new TextDecoder('utf-8').decode(bytes); }
 }
 /** HTML（表格）→ 行：每個區塊元素（div、p、td、th、li、br）各成一行 */
 function htmlLines(html){
@@ -1232,7 +1250,7 @@ function bRender(){
     const badge = it.done ? `<span class="badge ok">${esc(it.done)}</span>` : it.err ? `<span class="badge err">${esc(it.err)}</span>` :
       `<span class="badge ${it.conf==='確定'?'ok':it.conf==='待確認'?'warn':it.conf==='非正式'?'':'err'}">${it.conf||''}</span>`;
     return `<tr class="${it.done?'done':''}"><td><input type="checkbox" data-chk="${i}" ${it.check&&!it.done?'checked':''} ${it.done||!it.caseId?'disabled':''}></td>
-      <td><div class="nm">${esc(it.name)}</div><span class="muted">${it.src==='stage'?'暫存區':'本機'}${it.status?'｜'+esc(it.status):''}</span></td>
+      <td><div class="nm" title="${esc(it.from||'')}">${esc(it.name)}</div><span class="muted">${it.src==='stage'?esc(String(it.from||'暫存區').replace(/^drive:\S+\s*/,'').split('/').slice(-2,-1)[0]||'暫存區'):'本機'}${it.status?'｜'+esc(it.status):''}</span></td>
       <td>${r?`${esc(R(rocToIso(r.fields.date))||'—')}｜${esc(r.kind)}｜${esc(r.score||'—')} 分｜缺點 ${r.bad.length}<div class="nm muted">${esc(r.fields.name||'')}</div>`:'<span class="muted">—</span>'}</td>
       <td>${it.done?esc(it.caseId+'｜'+(c?c['工程名稱']:'')):`<select data-sel="${i}" style="max-width:100%"><option value="">（不匯入）</option>${opt(it)}</select>
         <input data-id="${i}" placeholder="或輸入案件編號" style="width:120px;margin-top:3px" value="">`}
@@ -1250,7 +1268,7 @@ function bRender(){
 async function bAddFiles(list){
   for(const f of list){
     if(B.items.some(x=>x.name===f.file.name && x.file.size===f.file.size)) continue;
-    const it={ src:f.src, name:f.file.name, file:f.file, stagedId:f.stagedId||'', cand:[], status:'', lines:[] };
+    const it={ src:f.src, name:f.file.name, file:f.file, stagedId:f.stagedId||'', cand:[], status:'', lines:[], from:f.from||'' };
     B.items.push(it); await bParse(it); bRender();
   }
 }
@@ -1264,10 +1282,15 @@ $('bStage').onclick=async()=>{
     for(let i=0;i<list.length;i++){
       const s=list[i]; if(B.items.some(x=>x.stagedId===s.檔案ID)) continue;
       $('bInfo').textContent=`讀取暫存區 ${i+1}/${list.length}：${s.原檔名}`;
-      const g=await api('recStageGet',{fileId:s.檔案ID});
-      const bin=atob(g.base64), u=new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) u[k]=bin.charCodeAt(k);
-      const file=new File([u], g.name, {type:g.mimeType||''});
-      await bAddFiles([{src:'stage', file, stagedId:s.檔案ID}]);
+      if(/委員紀錄|評分表/.test(s.原檔名)){   // 檔名已可判斷為非正式紀錄，不必下載解析
+        B.items.push({ src:'stage', name:s.原檔名, file:{size:+s.大小||0}, stagedId:s.檔案ID, cand:[], caseId:'', conf:'非正式', formal:false, note:'委員紀錄表或評分表，不是正式紀錄表', status:'', lines:[], from:s.來源 }); bRender(); continue;
+      }
+      try{
+        const g=await api('recStageGet',{fileId:s.檔案ID});
+        const bin=atob(g.base64), u=new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) u[k]=bin.charCodeAt(k);
+        const file=new File([u], g.name, {type:g.mimeType||''});
+        await bAddFiles([{src:'stage', file, stagedId:s.檔案ID, from:s.來源}]);
+      }catch(e){ B.items.push({ src:'stage', name:s.原檔名, file:{size:0}, stagedId:s.檔案ID, cand:[], caseId:'', conf:'找不到', status:'讀取失敗：'+(e.message||e), lines:[] }); bRender(); }
     }
   }catch(e){ toast('讀取暫存區失敗：'+(e.message||e),5000); }
   $('bStage').disabled=false; bRender();
