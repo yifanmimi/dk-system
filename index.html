@@ -521,6 +521,16 @@ table.mr td.hl{background:#fffbe6}
 #v-rec button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 #v-rec button.primary:hover{background:#174b86}
 #v-rec button.mini{padding:1px 8px;font-size:12px}
+#v-rec details.batch{margin:0 0 14px}
+#v-rec details.batch>summary{cursor:pointer;font-size:14px}
+#v-rec .btbl{max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:6px}
+#v-rec .btbl:empty{display:none}
+#v-rec .btbl table{width:100%;border-collapse:collapse;font-size:13px}
+#v-rec .btbl th,#v-rec .btbl td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:top}
+#v-rec .btbl th{position:sticky;top:0;background:var(--panel);z-index:1}
+#v-rec .btbl .nm{overflow-wrap:anywhere}
+#v-rec .btbl tr.done{opacity:.6}
+#v-rec .warn-t{color:var(--warn);font-size:12px}
 #v-rec button:disabled{opacity:.45;cursor:not-allowed}
 #v-rec .muted{color:var(--muted);font-size:13px}
 #v-rec .badge{display:inline-block;font-size:12px;padding:0 7px;border-radius:999px;background:var(--accent-2);color:var(--accent);white-space:nowrap}
@@ -589,6 +599,23 @@ table.mr td.hl{background:#fffbe6}
 #v-rec .empty-hint{padding:30px 10px;text-align:center;color:var(--muted)}
 </style>
 <div class="rmain">
+<details class="card batch" id="batchBox">
+  <summary><b>📦 批次匯入紀錄表</b><span class="muted">　一次選多份紀錄表，自動解析並對應案件；確認後存原檔，尚未登錄的案件可一併寫入成績與缺失</span></summary>
+  <div class="row" style="margin:10px 0">
+    <button id="bLocal">選擇本機檔案…（可多選）</button>
+    <input type="file" id="bFiles" multiple accept=".odt,.docx,.doc,.pdf" hidden>
+    <button id="bStage" title="由系統擁有者收集到「督導紀錄匯入暫存」的檔案">讀取暫存區</button>
+    <button id="bClear">清空清單</button>
+    <span class="muted" id="bInfo"></span>
+  </div>
+  <div class="btbl" id="bTable"></div>
+  <div class="row" style="margin-top:10px">
+    <label><input type="checkbox" id="bFill" checked> 案件尚無成績與缺失時，一併寫入紀錄表的成績、缺失與內容（已有成績或缺失的案件只附加原檔）</label>
+    <span class="sp"></span>
+    <button class="primary" id="bGo" disabled>匯入勾選項目</button>
+  </div>
+</details>
+
 <div class="cols">
   <!-- 左：選擇案件、上傳紀錄表 -->
   <div class="col left">
@@ -853,8 +880,8 @@ async function extractLines(f){
   if(f.ext==='pdf'){
     let lines=[]; try{ lines=await pdfLines(f.file); }catch(e){}
     if(lines.join('').replace(/\s/g,'').length>80) return lines;
-    f.status='掃描檔，以 Google 文件辨識文字中…'; renderFile();
-  } else { f.status='以 Google 文件轉檔中…'; renderFile(); }
+    f.status='掃描檔，以 Google 文件辨識文字中…'; (f.onStatus||renderFile)();
+  } else { f.status='以 Google 文件轉檔中…'; (f.onStatus||renderFile)(); }
   const mime = f.ext==='pdf' ? 'application/pdf' : 'application/msword';
   const text = await gs('convertToText', await blobToB64(f.file), mime, f.name);
   return String(text||'').split(/\r?\n/).map(s=>s.replace(/\s+$/,'')).filter(s=>s.trim());
@@ -1130,7 +1157,144 @@ async function save(force){
 }
 $('rBtnSave').onclick=()=>save(false);
 
-function recStart(){ setupDrop(); renderResult(); renderCmp(); updateSave(); loadInit(); }
+/* =====================================================================
+ * 5. 批次匯入：多份紀錄表 → 解析 → 自動對應案件 → 確認後匯入
+ *    來源：本機多選檔案，或後台暫存區（recStage 收集的檔案）
+ *    對應規則：紀錄表日期＝案件日期 且 工程名稱相同或互相包含 → 確定；只有名稱或只有日期吻合 → 待確認
+ * ===================================================================== */
+const B = { items: [], busy: false };
+const MIME = {odt:'application/vnd.oasis.opendocument.text',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',doc:'application/msword',pdf:'application/pdf'};
+function recContent(r, src){
+  return { v:2, kind:r.kind, title:r.title||'', score:r.score, good:r.good, bad:r.bad, design:r.design, other:r.other, inspect:r.inspect, quality:r.quality, badTotal:r.badTotal||'', fields:r.fields||{}, source:src||'' };
+}
+const kindOk = (rec, c) => !rec || !rec.kind || (rec.kind==='查核') === /查核/.test(c['項目']||'');
+/** 由解析結果（或檔名）找候選案件 */
+function bMatch(it){
+  const rec=it.rec, d=rec? rocToIso(rec.fields.date) : '', nk=rec? nameKey(rec.fields.name) : '';
+  const fk=nameKey(it.name.replace(/\.[^.]+$/,''));
+  const sim=(a,b)=> a && b && (a===b || (a.length>=6 && b.indexOf(a)>=0) || (b.length>=6 && a.indexOf(b)>=0));
+  const live=S.cases.filter(c=>c['狀態']!=='已取消' && c['狀態']!=='已作廢');
+  let hit=live.filter(c=>d && c['日期']===d && sim(nameKey(c['工程名稱']), nk));
+  if(hit.length){ it.cand=hit; it.conf='確定'; }
+  else {
+    const byName=live.filter(c=>sim(nameKey(c['工程名稱']), nk) || (!nk && sim(nameKey(c['工程名稱']), fk) ) || (fk.length>=6 && fk.indexOf(nameKey(c['工程名稱']))>=0 && nameKey(c['工程名稱']).length>=6));
+    const byDate=d? live.filter(c=>c['日期']===d && kindOk(rec,c)) : [];
+    it.cand = byName.length ? byName : byDate;
+    it.conf = it.cand.length ? '待確認' : '找不到';
+    if(byName.length && d) it.note = '日期不同（紀錄表 '+R(d)+'）';
+    else if(!byName.length && byDate.length) it.note = '名稱不符，僅日期相同';
+  }
+  it.cand.sort((a,b)=> Math.abs(new Date(a['日期']||0)-new Date(d||0)) - Math.abs(new Date(b['日期']||0)-new Date(d||0)));
+  it.caseId = it.cand[0] ? it.cand[0]['案件編號'] : '';
+}
+async function bParse(it){
+  it.ext=(it.name.split('.').pop()||'').toLowerCase();
+  if(!MIME[it.ext]){ it.status='不支援的格式'; it.conf='找不到'; it.cand=[]; it.caseId=''; return; }
+  if(it.file.size>MAX_FILE){ it.status='檔案超過 20MB'; it.conf='找不到'; it.cand=[]; return; }
+  it.status='解析中…'; bRender();
+  try{
+    it.onStatus=bRender; const lines=await extractLines(it); it.rec=parseRecord(lines);
+    if(!it.rec.found){ it.status='看不出紀錄表欄位，改以檔名對應'; it.rec=null; }
+    else it.status='';
+  }catch(e){ it.status='解析失敗：'+(e.message||e); it.rec=null; }
+  bMatch(it);
+}
+function bFlags(){
+  const used={};
+  B.items.forEach(it=>{
+    it.warn='';
+    const c=S.cases.find(x=>x['案件編號']===it.caseId);
+    if(!c) return;
+    if(used[it.caseId]) it.warn='與上方檔案對應到同一案件';
+    else if(+c['原檔']>0) it.warn='案件已有原檔';
+    used[it.caseId]=1;
+    if(it.done==null && it.check==null) it.check = it.conf==='確定' && !it.warn;
+  });
+}
+function bRender(){
+  bFlags();
+  const n=B.items.length, ok=B.items.filter(x=>x.conf==='確定').length, sel=B.items.filter(x=>x.check && x.caseId && !x.done).length;
+  $('bInfo').textContent = n ? `共 ${n} 份｜自動確定 ${ok}｜待確認 ${B.items.filter(x=>x.conf==='待確認').length}｜找不到 ${B.items.filter(x=>x.conf==='找不到').length}｜已勾選 ${sel}` : '';
+  $('bGo').disabled = B.busy || !sel || !canEdit();
+  if(!n){ $('bTable').innerHTML=''; return; }
+  const opt=(it)=> it.cand.map(c=>`<option value="${esc(c['案件編號'])}" ${c['案件編號']===it.caseId?'selected':''}>${esc(c['案件編號']+'｜'+(R(c['日期'])||'未定')+'｜'+shortType(c['項目'])+'｜'+shortUnit(c['單位'])+'｜'+c['工程名稱'])}</option>`).join('');
+  $('bTable').innerHTML = `<table><thead><tr><th style="width:28px"></th><th>檔案</th><th>紀錄表內容</th><th>對應案件</th><th style="width:150px">匯入方式／狀態</th></tr></thead><tbody>${B.items.map((it,i)=>{
+    const c=S.cases.find(x=>x['案件編號']===it.caseId), r=it.rec;
+    const how = !c ? '' : (hasRes(c) || !$('bFill').checked) ? '附加原檔' : '寫入結果＋原檔';
+    const badge = it.done ? `<span class="badge ok">${esc(it.done)}</span>` : it.err ? `<span class="badge err">${esc(it.err)}</span>` :
+      `<span class="badge ${it.conf==='確定'?'ok':it.conf==='待確認'?'warn':'err'}">${it.conf||''}</span>`;
+    return `<tr class="${it.done?'done':''}"><td><input type="checkbox" data-chk="${i}" ${it.check&&!it.done?'checked':''} ${it.done||!it.caseId?'disabled':''}></td>
+      <td><div class="nm">${esc(it.name)}</div><span class="muted">${it.src==='stage'?'暫存區':'本機'}${it.status?'｜'+esc(it.status):''}</span></td>
+      <td>${r?`${esc(R(rocToIso(r.fields.date))||'—')}｜${esc(r.kind)}｜${esc(r.score||'—')} 分｜缺點 ${r.bad.length}<div class="nm muted">${esc(r.fields.name||'')}</div>`:'<span class="muted">—</span>'}</td>
+      <td>${it.done?esc(it.caseId+'｜'+(c?c['工程名稱']:'')):`<select data-sel="${i}" style="max-width:100%"><option value="">（不匯入）</option>${opt(it)}</select>
+        <input data-id="${i}" placeholder="或輸入案件編號" style="width:120px;margin-top:3px" value="">`}
+        ${it.note?`<div class="muted">${esc(it.note)}</div>`:''}${it.warn&&!it.done?`<div class="warn-t">⚠ ${esc(it.warn)}</div>`:''}</td>
+      <td>${badge}<div class="muted">${esc(it.done?'':how)}</div></td></tr>`; }).join('')}</tbody></table>`;
+  $('bTable').querySelectorAll('[data-chk]').forEach(el=>el.onchange=()=>{ B.items[+el.dataset.chk].check=el.checked; bRender(); });
+  $('bTable').querySelectorAll('[data-sel]').forEach(el=>el.onchange=()=>{ const it=B.items[+el.dataset.sel]; it.caseId=el.value; it.check=!!el.value; it.conf=el.value?'確定':'找不到'; setTimeout(bRender,0); });
+  $('bTable').querySelectorAll('[data-id]').forEach(el=>el.onchange=()=>{
+    const it=B.items[+el.dataset.id], id=el.value.trim(), c=S.cases.find(x=>x['案件編號']===id);
+    if(!c){ toast('找不到案件 '+id); return; }
+    if(!it.cand.includes(c)) it.cand.unshift(c);
+    it.caseId=id; it.check=true; it.conf='確定'; setTimeout(bRender,0);
+  });
+}
+async function bAddFiles(list){
+  for(const f of list){
+    if(B.items.some(x=>x.name===f.file.name && x.file.size===f.file.size)) continue;
+    const it={ src:f.src, name:f.file.name, file:f.file, stagedId:f.stagedId||'', cand:[], status:'', lines:[] };
+    B.items.push(it); await bParse(it); bRender();
+  }
+}
+$('bLocal').onclick=()=>$('bFiles').click();
+$('bFiles').onchange=async()=>{ const fs=[...$('bFiles').files]; $('bFiles').value=''; await bAddFiles(fs.map(file=>({src:'local',file}))); };
+$('bStage').onclick=async()=>{
+  $('bStage').disabled=true;
+  try{
+    const list=(await api('recStageList',{})).filter(x=>x.狀態!=='略過');
+    if(!list.length) toast('暫存區沒有待匯入的檔案');
+    for(let i=0;i<list.length;i++){
+      const s=list[i]; if(B.items.some(x=>x.stagedId===s.檔案ID)) continue;
+      $('bInfo').textContent=`讀取暫存區 ${i+1}/${list.length}：${s.原檔名}`;
+      const g=await api('recStageGet',{fileId:s.檔案ID});
+      const bin=atob(g.base64), u=new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) u[k]=bin.charCodeAt(k);
+      const file=new File([u], g.name, {type:g.mimeType||''});
+      await bAddFiles([{src:'stage', file, stagedId:s.檔案ID}]);
+    }
+  }catch(e){ toast('讀取暫存區失敗：'+(e.message||e),5000); }
+  $('bStage').disabled=false; bRender();
+};
+$('bClear').onclick=()=>{ if(B.busy) return; B.items=[]; bRender(); };
+$('bFill').onchange=bRender;
+$('bGo').onclick=async()=>{
+  const todo=B.items.filter(x=>x.check && x.caseId && !x.done);
+  if(!todo.length) return;
+  const nWrite=todo.filter(it=>{ const c=S.cases.find(x=>x['案件編號']===it.caseId); return c && !hasRes(c) && $('bFill').checked && it.rec; }).length;
+  if(!confirm(`匯入 ${todo.length} 份紀錄表？\n其中 ${nWrite} 件會寫入成績與缺失，其餘只附加原檔。`)) return;
+  B.busy=true; let ok=0, last='';
+  for(let k=0;k<todo.length;k++){
+    const it=todo[k], c=S.cases.find(x=>x['案件編號']===it.caseId);
+    $('bInfo').textContent=`匯入中 ${k+1}/${todo.length}：${it.name}`;
+    try{
+      const full = c && !hasRes(c) && $('bFill').checked && it.rec;
+      const args={ id:it.caseId, content: it.rec ? recContent(it.rec, it.name) : {} };
+      if(it.stagedId) args.stagedId=it.stagedId;
+      else args.file={ name:it.name, mimeType:it.file.type||MIME[it.ext], base64: await blobToB64(it.file) };
+      if(full) Object.assign(args, { score:it.rec.score, defects:it.rec.bad.map(d=>({text:d.text, code:d.code, level:d.level, points:d.points})), info:{}, force:true });
+      else args.attachOnly=true;
+      const res=await api('djSaveRecord', args);
+      it.done = full ? `已寫入（${it.rec.score||'—'} 分、缺失 ${res.defects||0}）` : '已附加原檔';
+      if(full) Object.assign(c, { 成績:it.rec.score, 缺失數:String(res.defects||''), 缺失未建立:false });
+      c['原檔']=(+c['原檔']||0)+1; ok++; last=it.caseId;
+    }catch(e){ it.err='失敗：'+(e.message||e); }
+    bRender();
+  }
+  B.busy=false; bRender(); renderCases();
+  toast(`批次匯入完成：成功 ${ok} 份`+(ok<todo.length?`，失敗 ${todo.length-ok} 份`:''), 5000);
+  if(last && window.REC_onSaved) window.REC_onSaved(last);
+};
+
+function recStart(){ setupDrop(); $('batchBox').style.display = canEdit() ? '' : 'none'; renderResult(); renderCmp(); updateSave(); loadInit(); }
 window.REC = {
   start: recStart,
   open(id){ PRE_ID=id||''; preDone=false; const c=S.cases.find(x=>x['案件編號']===id); if(c){ preDone=true; focusCase(c); } }
