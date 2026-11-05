@@ -425,6 +425,12 @@ input[type=search]::-webkit-search-cancel-button{display:none}
         <div id="impPend" class="tbl" style="max-height:460px"></div>
         <details style="margin-top:8px"><summary class="cnt">最近匯入</summary><div id="impRecent" class="log"></div></details>
       </div>
+      <div class="card hide" id="logCard" style="grid-column:1/-1">
+        <h3 style="margin-top:0">各帳號操作紀錄</h3>
+        <div class="row"><select id="lgUser"><option value="">全部帳號</option></select><input type="date" id="lgFrom" title="起日"><span class="cnt">～</span><input type="date" id="lgTo" title="迄日"><input id="lgQ" placeholder="搜尋動作、案件編號、內容…" style="flex:1;min-width:180px"><button class="b p" id="lgGo">查詢</button><button class="b" id="lgCsv">下載 CSV</button></div>
+        <div id="lgStat" class="cnt" style="margin-top:8px"></div>
+        <div id="lgBox" class="tbl" style="max-height:520px;margin-top:8px"></div>
+      </div>
     </div>
   </section>
   <!-- 統計 -->
@@ -3169,8 +3175,40 @@ async function renderAdmin() {
   if (has('系統維護') && !S._tdLoaded) { S._tdLoaded = true; loadTenderStatus(); }
   $('impCard').classList.toggle('hide', !has('系統維護'));
   if (has('系統維護') && !S._impLoaded) { S._impLoaded = true; loadImpAdmin(); }
+  $('logCard').classList.toggle('hide', !has('帳號管理'));
+  if (has('帳號管理') && !S._logLoaded) { S._logLoaded = true; initLog(); }
   if (adminLoaded || !has('帳號管理')) return; adminLoaded = true;
   try { drawUsers(await api('listUsers')); } catch (e) { adminLoaded = false; toast(errMsg(e)); }
+}
+/* ---------- 各帳號操作紀錄（管理頁，限帳號管理） ---------- */
+function logBody(txt) {
+  let body = txt || '';
+  try { const o = JSON.parse(txt); body = Object.keys(o).map(k => Array.isArray(o[k]) ? k + '：' + (o[k][0] === '' ? '（空）' : o[k][0]) + ' → ' + (o[k][1] === '' ? '（空）' : o[k][1]) : k + '：' + (typeof o[k] === 'object' ? JSON.stringify(o[k]) : o[k])).join('；'); } catch (e) { }
+  return body;
+}
+function initLog() {
+  const t = todayStr(), d = new Date(t + 'T00:00:00'); d.setDate(d.getDate() - 30);
+  $('lgFrom').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); $('lgTo').value = t;
+  addClear($('lgQ'));
+  $('lgGo').onclick = loadLog; $('lgUser').onchange = loadLog;
+  $('lgQ').addEventListener('keydown', e => { if (e.key === 'Enter') loadLog(); });
+  $('lgCsv').onclick = () => downloadCsv('操作紀錄_' + todayStr(), ['時間', '帳號', '動作', '案件編號', '內容'], (S.logRows || []).map(r => [r.時間, r.使用者, r.動作, r.案件編號, logBody(r.內容)]));
+  loadLog();
+}
+async function loadLog() {
+  $('lgBox').innerHTML = '<div class="cnt">讀取中…</div>';
+  try {
+    const d = await api('logList', { email: $('lgUser').value, from: $('lgFrom').value, to: $('lgTo').value, q: $('lgQ').value });
+    S.logRows = d.rows;
+    const cur = $('lgUser').value;
+    $('lgUser').innerHTML = '<option value="">全部帳號</option>' + d.stat.map(s => '<option value="' + esc(String(s.使用者).toLowerCase()) + '">' + esc((s.姓名 ? s.姓名 + ' ' : '') + s.使用者) + '</option>').join('');
+    if (cur && !d.stat.some(s => String(s.使用者).toLowerCase() === cur)) $('lgUser').insertAdjacentHTML('beforeend', '<option value="' + esc(cur) + '">' + esc(cur) + '</option>');
+    $('lgUser').value = cur;
+    $('lgStat').innerHTML = '期間內：' + (d.stat.map(s => '<span style="margin-right:14px"><b>' + esc(s.姓名 || String(s.使用者).split('@')[0]) + '</b> ' + s.筆數 + ' 筆（登入 ' + s.登入 + ' 天，最後 ' + esc(R(s.最後時間)) + '）</span>').join('') || '無紀錄');
+    $('lgBox').innerHTML = '<table><thead><tr><th style="width:150px">時間</th><th style="width:190px">帳號</th><th style="width:150px">動作</th><th style="width:90px">案件</th><th>內容</th></tr></thead><tbody>' +
+      (d.rows.map(r => '<tr><td>' + esc(R(r.時間)) + '</td><td>' + esc(r.使用者) + '</td><td>' + esc(r.動作) + '</td><td>' + esc(r.案件編號) + '</td><td style="white-space:normal;word-break:break-all">' + esc(logBody(r.內容)).slice(0, 600) + '</td></tr>').join('') || '<tr><td colspan="5" class="cnt">沒有符合條件的紀錄</td></tr>') +
+      '</tbody></table>' + (d.more ? '<div class="cnt">只顯示最新 500 筆，請縮小日期或加上條件</div>' : '');
+  } catch (e) { $('lgBox').innerHTML = '<div class="cnt">讀取失敗：' + esc(errMsg(e)) + '</div>'; }
 }
 /* ---------- 改善檔案自動匯入（管理頁） ---------- */
 async function loadImpAdmin(d) {
