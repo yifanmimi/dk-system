@@ -3186,15 +3186,38 @@ $('btnHol').onclick = async () => {
   try { const r = await api('updateHolidays'); toast(r.msg, 4000); }
   catch (e) { toast(errMsg(e), 5000); } finally { loading(false); }
 };
+// 搬遷待確認清單：未確認者在前，可填處理說明後按「已確認」；已確認者預設隱藏
+let REVIEW_ = [], REVIEW_ALL_ = false;
+function renderReview() {
+  const cols = ['類型', '說明', '日期', '工程名稱', '項目', '單位', '來源'];
+  const todo = REVIEW_.filter(r => !r.確認時間), done = REVIEW_.filter(r => r.確認時間);
+  const rows = todo.concat(REVIEW_ALL_ ? done : []);
+  const head = '<div class="row" style="margin:0 0 6px"><span class="cnt">待確認 <b>' + todo.length + '</b> 筆、已確認 ' + done.length + ' 筆</span>' +
+    (done.length ? '<label class="cnt" style="margin-left:12px"><input type="checkbox" id="rvAll"' + (REVIEW_ALL_ ? ' checked' : '') + '> 顯示已確認</label>' : '') + '</div>';
+  const body = rows.map(r => {
+    const k = REVIEW_.indexOf(r);
+    const act = r.確認時間
+      ? '<span class="cnt">✅ ' + esc(r.處理說明) + '<br>' + esc(String(r.確認者).split('@')[0]) + '　' + esc(r.確認時間) + '</span> <button class="b" data-rvundo="' + k + '">取消確認</button>'
+      : '<input data-rvnote="' + k + '" placeholder="處理說明（可空白）" style="width:150px"> <button class="b p" data-rvok="' + k + '">已確認</button>';
+    return '<tr' + (r.確認時間 ? ' style="opacity:.6"' : '') + '>' + cols.map(c => '<td>' + esc(r[c]) + '</td>').join('') + '<td style="white-space:nowrap">' + act + '</td></tr>';
+  }).join('') || '<tr><td colspan="8">沒有待確認項目</td></tr>';
+  $('reviewBox').innerHTML = head + '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '<th>確認</th></tr></thead><tbody>' + body + '</tbody></table>';
+  $('reviewBox').classList.remove('hide');
+  const all = $('rvAll'); if (all) all.onchange = () => { REVIEW_ALL_ = all.checked; renderReview(); };
+  $('reviewBox').querySelectorAll('[data-rvok],[data-rvundo]').forEach(b => b.onclick = async () => {
+    const undo = b.dataset.rvundo != null, k = +(undo ? b.dataset.rvundo : b.dataset.rvok), r = REVIEW_[k];
+    const noteEl = $('reviewBox').querySelector('[data-rvnote="' + k + '"]');
+    loading(true, '儲存中…');
+    try {
+      REVIEW_[k] = await api('reviewConfirm', { row: r._row, name: r.工程名稱, note: noteEl ? noteEl.value : '', undo: undo });
+      toast(undo ? '已取消確認' : '已標記為已確認'); renderReview();
+    } catch (e) { toast(errMsg(e)); } finally { loading(false); }
+  });
+}
 $('btnReview').onclick = async () => {
   loading(true, '讀取中…');
-  try {
-    const list = await api('review');
-    const cols = ['類型', '說明', '日期', '工程名稱', '項目', '單位', '來源'];
-    $('reviewBox').innerHTML = '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' +
-      (list.map(r => '<tr>' + cols.map(c => '<td>' + esc(r[c]) + '</td>').join('') + '</tr>').join('') || '<tr><td colspan="7">沒有待確認項目</td></tr>') + '</tbody></table>';
-    $('reviewBox').classList.remove('hide');
-  } catch (e) { toast(errMsg(e)); } finally { loading(false); }
+  try { REVIEW_ = await api('review'); renderReview(); }
+  catch (e) { toast(errMsg(e)); } finally { loading(false); }
 };
 
 boot();
