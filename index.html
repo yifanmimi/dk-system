@@ -497,7 +497,6 @@ input[type=search]::-webkit-search-cancel-button{display:none}
       <div class="tbl"><table class="mr" id="mrT1"></table></div>
       <div class="tbl" style="margin-top:14px;max-width:760px"><table class="mr" id="mrT2"></table></div>
       <div class="mrrep">填表人 <input id="mrRep"> 職稱 <input id="mrTitle"> 電話 <input id="mrTel"></div>
-      <div class="cnt" id="mrSug" style="margin-top:8px"></div>
       <div id="mrWarn"></div>
     </div>
     <div class="card" style="margin-top:14px">
@@ -2282,7 +2281,6 @@ function renderMonth() {
     '<tr><td>' + nC + '</td><td>' + nA + '</td>' + ['優', '甲', '乙', '丙'].map(k => '<td>' + gA(k) + '</td><td>' + r2(gA(k)) + '</td>').join('') + '</tr>';
   $('mrWarn').innerHTML = d.noBud.length ? '<div class="mrwarn">本年度累計有 ' + d.noBud.length + ' 件未填發包預算或低於公告金額，未列入金額分級：' + d.noBud.map(c => esc(R(c[SI.date]) + ' ' + c[SI.name])).join('；') + '（可在案件的「工程資訊」補填發包預算）</div>' : '';
   $('mrInfo').textContent = '資料時間：' + R(S.stat.loadedAt);
-  rptSuggestA();
 }
 $('mrSave').onclick = async () => {
   const y = +$('mrY').value, m = +$('mrM').value, v = id => $(id) ? $(id).value : '';
@@ -2483,13 +2481,6 @@ function planCat(p) {
   if (/作業基金|更新改善/.test(p)) return '基金';
   return '其他';
 }
-/** 三級金額標案清單（後台依標案清單計算；每月份快取） */
-async function rptTiers(y, m) {
-  S.tierMemo = S.tierMemo || {};
-  const k = y + '-' + m;
-  if (!S.tierMemo[k]) S.tierMemo[k] = api('tenderTiers', { year: y, month: m }).catch(e => { delete S.tierMemo[k]; throw e; });
-  return S.tierMemo[k];
-}
 async function rptXlsx(y, m, V) {
   loading(true, '產生督導成果統計表…');
   try {
@@ -2620,20 +2611,6 @@ async function xlsxBook(name, sheets) {
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
   saveBlob(await z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name + '.xlsx');
 }
-/** 「全年度執行總件數」試算：依標案清單（月底在建＋當年度完工） */
-async function rptSuggestA() {
-  const box = $('mrSug'); if (!box) return;
-  const y = +$('mrY').value, m = +$('mrM').value;
-  box.textContent = '依標案清單試算全年度執行總件數中…';
-  try {
-    const t = await rptTiers(y, m); if (+$('mrY').value !== y || +$('mrM').value !== m) return;
-    const n = t.tiers.map(l => l.length);
-    box.innerHTML = '依標案清單試算全年度執行總件數（' + m + ' 月底在建＋當年度完工）：查核金額以上 <b>' + n[0] + '</b>、一千萬以上 <b>' + n[1] + '</b>、公告金額以上未達一千萬 <b>' + n[2] + '</b>' +
-      (canSetStat() ? ' <button class="b" id="mrUseSug">帶入上表（再按儲存）</button>' : '');
-    if ($('mrUseSug')) $('mrUseSug').onclick = () => { ['mrA0', 'mrA1', 'mrA2'].forEach((id, i) => { if ($(id)) $(id).value = n[i]; }); toast('已帶入，請確認後按「儲存手填欄位」'); };
-  } catch (e) { box.textContent = '標案清單試算失敗：' + errMsg(e); }
-}
-
 /* 下載 CSV（統計表） */
 $('v-stat').addEventListener('click', e => {
   const b = e.target.closest('[data-csv]'); if (!b) return;
