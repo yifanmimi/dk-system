@@ -1197,24 +1197,32 @@ async function bParse(it){
     if(!it.rec.found){ it.status='看不出紀錄表欄位，改以檔名對應'; it.rec=null; }
     else it.status='';
   }catch(e){ it.status='解析失敗：'+(e.message||e); it.rec=null; }
+  // 只匯入正式的督導／查核紀錄表：委員紀錄表、評分表等不匯入
+  const title = it.rec ? it.rec.title : '';
+  if(/委員紀錄|評分表/.test(title+' '+it.name)){ it.formal=false; it.conf='非正式'; it.note='委員紀錄表或評分表，不是正式紀錄表'; it.cand=[]; it.caseId=''; return; }
+  it.formal = !!it.rec && /(督導|查核)紀錄/.test(title);
   bMatch(it);
+  if(!it.formal && it.caseId){ it.conf='待確認'; it.note=(it.note?it.note+'；':'')+'標題不是「督導／查核紀錄」'+(title?'（'+title.slice(0,30)+'）':'')+'，請確認是否為正式紀錄表'; }
 }
+/** 同一案件有多份時優先順序：正式紀錄且可解析 > Word/ODT > PDF */
+const bRank = it => (it.formal?100:0) + (it.rec?10:0) + ({odt:3,docx:3,doc:2,pdf:1}[it.ext]||0);
 function bFlags(){
-  const used={};
+  const used={}, best={};
+  B.items.forEach(it=>{ if(it.caseId && !it.done && (!best[it.caseId] || bRank(it)>bRank(best[it.caseId]))) best[it.caseId]=it; });
   B.items.forEach(it=>{
     it.warn='';
     const c=S.cases.find(x=>x['案件編號']===it.caseId);
     if(!c) return;
-    if(used[it.caseId]) it.warn='與上方檔案對應到同一案件';
+    if(best[it.caseId] && best[it.caseId]!==it) it.warn='同一案件已有較適合的檔案（'+best[it.caseId].name.slice(0,30)+'）';
     else if(+c['原檔']>0) it.warn='案件已有原檔';
     used[it.caseId]=1;
-    if(it.done==null && it.check==null) it.check = it.conf==='確定' && !it.warn;
+    if(it.done==null && it.check==null) it.check = it.conf==='確定' && it.formal!==false && !it.warn;
   });
 }
 function bRender(){
   bFlags();
   const n=B.items.length, ok=B.items.filter(x=>x.conf==='確定').length, sel=B.items.filter(x=>x.check && x.caseId && !x.done).length;
-  $('bInfo').textContent = n ? `共 ${n} 份｜自動確定 ${ok}｜待確認 ${B.items.filter(x=>x.conf==='待確認').length}｜找不到 ${B.items.filter(x=>x.conf==='找不到').length}｜已勾選 ${sel}` : '';
+  $('bInfo').textContent = n ? `共 ${n} 份｜自動確定 ${ok}｜待確認 ${B.items.filter(x=>x.conf==='待確認').length}｜非正式 ${B.items.filter(x=>x.conf==='非正式').length}｜找不到 ${B.items.filter(x=>x.conf==='找不到').length}｜已勾選 ${sel}` : '';
   $('bGo').disabled = B.busy || !sel || !canEdit();
   if(!n){ $('bTable').innerHTML=''; return; }
   const opt=(it)=> it.cand.map(c=>`<option value="${esc(c['案件編號'])}" ${c['案件編號']===it.caseId?'selected':''}>${esc(c['案件編號']+'｜'+(R(c['日期'])||'未定')+'｜'+shortType(c['項目'])+'｜'+shortUnit(c['單位'])+'｜'+c['工程名稱'])}</option>`).join('');
@@ -1222,7 +1230,7 @@ function bRender(){
     const c=S.cases.find(x=>x['案件編號']===it.caseId), r=it.rec;
     const how = !c ? '' : (hasRes(c) || !$('bFill').checked) ? '附加原檔' : '寫入結果＋原檔';
     const badge = it.done ? `<span class="badge ok">${esc(it.done)}</span>` : it.err ? `<span class="badge err">${esc(it.err)}</span>` :
-      `<span class="badge ${it.conf==='確定'?'ok':it.conf==='待確認'?'warn':'err'}">${it.conf||''}</span>`;
+      `<span class="badge ${it.conf==='確定'?'ok':it.conf==='待確認'?'warn':it.conf==='非正式'?'':'err'}">${it.conf||''}</span>`;
     return `<tr class="${it.done?'done':''}"><td><input type="checkbox" data-chk="${i}" ${it.check&&!it.done?'checked':''} ${it.done||!it.caseId?'disabled':''}></td>
       <td><div class="nm">${esc(it.name)}</div><span class="muted">${it.src==='stage'?'暫存區':'本機'}${it.status?'｜'+esc(it.status):''}</span></td>
       <td>${r?`${esc(R(rocToIso(r.fields.date))||'—')}｜${esc(r.kind)}｜${esc(r.score||'—')} 分｜缺點 ${r.bad.length}<div class="nm muted">${esc(r.fields.name||'')}</div>`:'<span class="muted">—</span>'}</td>
