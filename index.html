@@ -1334,8 +1334,10 @@ $('bGo').onclick=async()=>{
 };
 
 function recStart(){ setupDrop(); $('batchBox').style.display = canEdit() ? '' : 'none'; renderResult(); renderCmp(); updateSave(); loadInit(); }
+let recStarted=false;
 window.REC = {
-  start: recStart,
+  start(){ recStarted=true; recStart(); },
+  reload(){ if(recStarted) loadInit(); },   // 主頁資料異動後重新讀取案件清單
   open(id){ PRE_ID=id||''; preDone=false; const c=S.cases.find(x=>x['案件編號']===id); if(c){ preDone=true; focusCase(c); } }
 };
 window.__REC_parse = lines => parseRecord(lines);   // 測試用
@@ -1512,16 +1514,17 @@ function lsSet(k, d) {
     localStorage.setItem(k, JSON.stringify(Object.assign({}, d, { cases: d.cases.filter(c => c.狀態 !== '已作廢') })));
   } catch (e) { }
 }
-async function boot(year) {
-  const cachedD = lsGet(LS_KEY(year));
-  if (cachedD) { try { applyInit(cachedD, true); } catch (e) { } } else loading(true, '載入資料中…');
+async function boot(year, quiet) {
+  // quiet：資料異動後的背景更新，不先顯示舊暫存、不擋畫面
+  const cachedD = quiet ? null : lsGet(LS_KEY(year));
+  if (cachedD) { try { applyInit(cachedD, true); } catch (e) { } } else if (!quiet) loading(true, '載入資料中…');
   try {
     const d = await api('init', year ? { year: year } : {});
     lsSet(LS_KEY(year), d);
     applyInit(d, false);
     loadTenders();
   } catch (e) {
-    if (cachedD) toast('無法讀取最新資料：' + errMsg(e), 5000);
+    if (cachedD || quiet) toast('無法讀取最新資料：' + errMsg(e), 5000);
     else document.querySelector('main').innerHTML = '<div class="card errbox">' + esc(errMsg(e)) + '</div>';
   } finally { loading(false); }
 }
@@ -1586,8 +1589,33 @@ function setView(v) {
 const CASE_ID = (new URLSearchParams(location.search).get('id') || '').replace(/[^0-9\-]/g, '');
 setView(S.view);
 if (S.view === 'rec' && CASE_ID) REC.open(CASE_ID);
+/* ===================== 資料異動後自動更新 =====================
+ * 任何新增／修改／上傳／刪除成功後呼叫 dataChanged()：
+ *   - 清掉前台各種暫存（統計、督導結果、分級），下次顯示時重新讀取
+ *   - 背景重新讀取目前年度的行程（含改善檔、紀錄表等衍生欄位），不必手動重新整理
+ *   - 督導紀錄頁的案件清單也一併重新讀取
+ * 另外：頁面切到背景超過 1 分鐘再回來，也會自動更新（可能有其他人修改）。
+ */
+let _dcT = null;
+function dataChanged(opt) {
+  opt = opt || {};
+  S._statFresh = false; S.tierMemo = {};
+  if (opt.id && S.resMemo) delete S.resMemo[opt.id]; else S.resMemo = {};
+  clearTimeout(_dcT);
+  _dcT = setTimeout(async () => {
+    await boot(S.year, true);
+    if (S._recStarted && window.REC && REC.reload) REC.reload();
+    if (S.view === 'stat' || S.view === 'month') loadStats();
+  }, 300);
+}
+let _hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { _hiddenAt = Date.now(); return; }
+  if (_hiddenAt && Date.now() - _hiddenAt > 60000 && S.me) dataChanged();
+  _hiddenAt = 0;
+});
 /* 督導紀錄頁儲存結果後，重新讀取行程資料（狀態、成績會更新） */
-window.REC_onSaved = id => { if (S.resMemo) delete S.resMemo[id]; boot(S.year); };
+window.REC_onSaved = id => dataChanged({ id: id });
 $('selYear').onchange = () => { S.month = null; boot($('selYear').value); };
 function render() {
   if (S.view === 'cal') renderCal();
@@ -2627,7 +2655,7 @@ $('impList').addEventListener('click', async e => {
   const d = e.target.closest('[data-del]'); if (!d || !S.editing) return;
   if (!confirm('刪除改善檔案「' + d.dataset.fn + '」？\n（雲端硬碟中的檔案會移到垃圾桶，30 天內可由系統擁有者救回）')) return;
   d.disabled = true;
-  try { showImp(await api('impDelete', { fileId: d.dataset.del })); toast('已刪除', 2500); } catch (err) { toast('刪除失敗：' + errMsg(err), 4000); d.disabled = false; }
+  try { showImp(await api('impDelete', { fileId: d.dataset.del })); toast('已刪除', 2500); dataChanged({ id: S.editing && S.editing.案件編號 }); } catch (err) { toast('刪除失敗：' + errMsg(err), 4000); d.disabled = false; }
 });
 $('impFile').addEventListener('change', () => { const fs = [...$('impFile').files]; $('impPick').textContent = fs.length ? fs.map(f => f.name).join('、') : '可多選；PDF、Word、ODT、圖片、壓縮檔皆可，每檔 20MB 以內'; $('impGo').disabled = !fs.length; });
 $('impGo').onclick = async () => {
@@ -2645,6 +2673,7 @@ $('impGo').onclick = async () => {
   if ($('impDone').checked && ok) { c.改善完成 = true; $('c改善完成').checked = true; }
   $('impGo').textContent = '上傳'; $('impFile').value = ''; $('impPick').textContent = '可多選；PDF、Word、ODT、圖片、壓縮檔皆可，每檔 20MB 以內'; $('impDone').checked = false;
   if (r) showImp(r); else loadImp(c.案件編號);
+  if (ok) dataChanged({ id: c.案件編號 });
 };
 function openCase(id, date) {
   const c = id ? S.cases.find(x => x.案件編號 === id) : null;
@@ -2955,7 +2984,7 @@ async function uploadTender() {
     toast('標案清單已更新：' + r.count + ' 筆', 4000);
     $('tdReport').innerHTML = '<div class="tdsum"><span class="ok">已更新 ' + r.count + ' 筆（原 ' + r.info.before + ' 筆，已備份）</span></div>';
     $('tdFile').value = ''; S.td = null; S._tendersFresh = false; S._tHasActual = null; S.tiMemo = {};
-    loadTenderStatus(); loadTenders();
+    loadTenderStatus(); loadTenders(); dataChanged();
   } catch (e) { toast(errMsg(e), 6000); } finally { loading(false); }
 }
 /* 期限試算（與後台規則相同） */
@@ -3011,6 +3040,7 @@ async function save(force) {
       await boot(cy);
       toast(msg + '（已切換到 ' + cy + ' 年度）', 3500);
     } else { upsert(r.case); toast(msg); render(); }
+    dataChanged({ id: r.case.案件編號 });
   } catch (e) { showErr(errMsg(e)); }
   finally { loading(false); $('btnSave').disabled = $('btnForce').disabled = false; }
 }
@@ -3018,7 +3048,7 @@ function showErr(m) { $('dlgErr').textContent = m; $('dlgErr').classList.remove(
 function upsert(c) {
   const i = S.cases.findIndex(x => x.案件編號 === c.案件編號);
   if (String(+c.年度) !== S.year) { if (i >= 0) S.cases.splice(i, 1); return; }
-  if (i >= 0) S.cases[i] = c; else S.cases.push(c);
+  if (i >= 0) S.cases[i] = Object.assign({}, S.cases[i], c); else S.cases.push(c);
 }
 $('btnSave').onclick = () => save(false);
 $('btnForce').onclick = () => save(true);
@@ -3028,7 +3058,7 @@ $('btnCancelGo').onclick = async () => {
   const reason = $('cancelReason').value.trim();
   if (!reason) return showErr('請填寫取消原因');
   loading(true, '取消中…');
-  try { const r = await api('cancelCase', { id: S.editing.案件編號, reason: reason }); upsert(r.case); toast('已取消 ' + r.case.案件編號); closeDlg(); render(); }
+  try { const r = await api('cancelCase', { id: S.editing.案件編號, reason: reason }); upsert(r.case); toast('已取消 ' + r.case.案件編號); closeDlg(); render(); dataChanged({ id: r.case.案件編號 }); }
   catch (e) { showErr(errMsg(e)); } finally { loading(false); }
 };
 $('btnRecFile').onclick = e => downloadRecFile(e.currentTarget);
@@ -3042,12 +3072,12 @@ $('btnVoidGo').onclick = async () => {
   try {
     const r = await api('voidCase', { id: S.editing.案件編號, reason: reason });
     if (has('行程作廢')) upsert(r.case); else S.cases = S.cases.filter(x => x.案件編號 !== r.case.案件編號);
-    toast('已作廢 ' + r.case.案件編號); closeDlg(); render();
+    toast('已作廢 ' + r.case.案件編號); closeDlg(); render(); dataChanged({ id: r.case.案件編號 });
   } catch (e) { showErr(errMsg(e)); } finally { loading(false); }
 };
 $('btnRestore').onclick = async () => {
   loading(true, '還原中…');
-  try { const r = await api('restoreCase', { id: S.editing.案件編號 }); upsert(r.case); toast('已還原 ' + r.case.案件編號); closeDlg(); render(); }
+  try { const r = await api('restoreCase', { id: S.editing.案件編號 }); upsert(r.case); toast('已還原 ' + r.case.案件編號); closeDlg(); render(); dataChanged({ id: r.case.案件編號 }); }
   catch (e) { showErr(errMsg(e)); } finally { loading(false); }
 };
 /* 督導結果：開啟對話框時就先在背景讀取（同一案件讀過就直接用），展開時立即顯示 */
@@ -3119,7 +3149,7 @@ $('impSaveSet').onclick = async () => {
 };
 $('impScanNow').onclick = async () => {
   const b = $('impScanNow'); b.disabled = true; b.textContent = '掃描中…';
-  try { const r = await api('impScan', {}); toast('掃描完成：新檔案 ' + r.newFiles + '，自動匯入 ' + r.auto + '，待對應 ' + r.pending, 5000); await loadImpAdmin(); boot(S.year); } catch (e) { toast('掃描失敗：' + errMsg(e), 5000); }
+  try { const r = await api('impScan', {}); toast('掃描完成：新檔案 ' + r.newFiles + '，自動匯入 ' + r.auto + '，待對應 ' + r.pending, 5000); await loadImpAdmin(); dataChanged(); } catch (e) { toast('掃描失敗：' + errMsg(e), 5000); }
   b.disabled = false; b.textContent = '立即掃描';
 };
 $('impPend').addEventListener('click', async e => {
@@ -3128,7 +3158,7 @@ $('impPend').addEventListener('click', async e => {
   const id = tr.querySelector('.impId').value.trim() || tr.querySelector('.impSel').value;
   if (go && !id) { toast('請先選擇或輸入案件編號', 3000); return; }
   e.target.disabled = true;
-  try { await api('impAssign', skip ? { srcId: tr.dataset.src, skip: true } : { srcId: tr.dataset.src, caseId: id }); tr.remove(); toast(skip ? '已略過' : '已匯入 ' + id, 2500); } catch (err) { toast('失敗：' + errMsg(err), 4000); e.target.disabled = false; }
+  try { await api('impAssign', skip ? { srcId: tr.dataset.src, skip: true } : { srcId: tr.dataset.src, caseId: id }); tr.remove(); toast(skip ? '已略過' : '已匯入 ' + id, 2500); if (!skip) dataChanged({ id: id }); } catch (err) { toast('失敗：' + errMsg(err), 4000); e.target.disabled = false; }
 });
 /* 權限勾選區：依群組列出每項功能 */
 $('uPerms').innerHTML = PERM_GROUPS.map(g => '<fieldset><legend>' + g[0] + '</legend>' +
