@@ -99,8 +99,6 @@
     getRecord: id => call('djRecord', { id }),
     convertToText: (base64, mimeType, fileName) => call('djConvert', { base64, mimeType, fileName }),
     saveOdtToDrive: (base64, fileName) => call('djSaveOdt', { base64, fileName }),
-    aiRecognize: (pages, committees) => call('djAi', { pages, committees }),
-    aiStructureText: (text, committees) => call('djAiText', { text, committees }),
     whoAmI: async () => (current() || {}).email || ''
   };
   function attachRun() {
@@ -1455,7 +1453,7 @@ const has = p => !!(S.me && (S.me.perms || []).indexOf(p) >= 0);
 const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視'], ['行程編輯', '新增、修改、取消、還原'], ['行程作廢', '作廢及檢視已作廢']]],
-  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、AI 辨識、轉檔、存雲端']]],
+  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、批次匯入']]],
   ['統計', [['統計', '統計分頁'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
   ['管理', [['帳號管理', '帳號與權限'], ['系統維護', '日曆同步、國定假日、搬遷清單、標案清單上傳']]]
 ];
@@ -1479,7 +1477,7 @@ function stOf(c) { return c.狀態 === '已排定' && !c.日期 ? '日期未定'
 function stBadge(c) {
   const st = stOf(c), short = { '待登錄結果': '待登錄', '已登錄結果': '已登錄' }[st] || st;
   const n = parseFloat(c.成績), g = c.狀態 === '已登錄結果' && !isNaN(n) ? (n >= 80 ? '甲' : n >= 70 ? '乙' : '丙') : '';
-  return '<span class="st ' + st + '">' + short + '</span>' + (g ? ' <span class="gd g' + g + '" title="成績 ' + c.成績 + '">' + g + '</span>' : '');
+  return '<span class="st ' + st + '">' + short + '</span>' + (g ? ' <span class="gd g' + g + '" title="成績 ' + esc(c.成績) + '">' + g + '</span>' : '');
 }
 const dateText = c => R(c.日期) || ('<span class="soon">日期未定</span>' + (c.預定月份 ? '（' + (+c.預定月份.slice(5, 7)) + ' 月）' : ''));
 const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -1826,7 +1824,8 @@ function saveBlob(blob, name) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 function downloadCsv(name, head, rows) {
-  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  // 以 = + - @ 開頭的文字前加 '，避免 Excel 開啟時當成公式執行（純數字不處理）
+  const q = v => { let t = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(t) && !/^-?\d+(\.\d+)?$/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
   saveBlob(new Blob(['\ufeff' + [head.map(q).join(',')].concat(rows.map(r => r.map(q).join(','))).join('\r\n')], { type: 'text/csv' }), name + '.csv');
 }
 /** 產生 Excel（.xlsx）：以 JSZip 組出最精簡的活頁簿；標題列粗體、凍結、可篩選，數字欄存成數值 */
