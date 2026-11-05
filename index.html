@@ -413,6 +413,14 @@ table.mr td.hl{background:#fffbe6}
         <div class="row" style="margin-top:10px"><input type="file" id="tdFile" accept=".ods,.xlsx,.csv"><span class="cnt">請上傳工程會「標案自選欄位表」匯出檔（.ods、.xlsx 或 CSV），須含標準格式 28 個欄位：序號、主管機關、主辦機關、執行機關、編號、標案名稱、列管年度、計畫主管機關、計畫主辦機關、計畫名稱、發包預算、決標金額、變更設計後契約金額、規劃單位、設計單位、監造單位、專案管理單位、得標廠商、工程類別、工程概要、縣市鄉鎮、預定開工日期、實際開工日期、預定完工日期、變更設計後預定完工日期、工期類別、總天數、實際完工日期</span></div>
         <div id="tdReport" class="hide" style="margin-top:10px"></div>
       </div>
+      <div class="card" id="impCard" style="grid-column:1/-1">
+        <h3 style="margin-top:0">改善檔案自動匯入</h3>
+        <div class="row"><input id="impSrc" placeholder="來源雲端資料夾網址（例如：農部查核資料COPY）" style="flex:1;min-width:260px"><label style="white-space:nowrap"><input type="checkbox" id="impAutoOn"> 每天早上 7 點自動掃描</label><button class="b" id="impSaveSet">儲存設定</button><button class="b p" id="impScanNow">立即掃描</button></div>
+        <div class="cnt" id="impInfo" style="margin-top:6px">讀取中…</div>
+        <p class="cnt">系統依檔名中的工程名稱（及開頭日期）自動對應案件，唯一對應者直接複製到「督導改善檔案」並掛到案件；對應不到或有多個候選的列在下面，請選擇案件後按「匯入」，不是改善資料的按「略過」。來源資料夾的檔案不會被搬動或改名。</p>
+        <div id="impPend" class="tbl" style="max-height:460px"></div>
+        <details style="margin-top:8px"><summary class="cnt">最近匯入</summary><div id="impRecent" class="log"></div></details>
+      </div>
     </div>
   </section>
   <!-- 統計 -->
@@ -3085,9 +3093,43 @@ $('btnNew').onclick = () => openCase(null, S.view === 'cal' ? null : null);
 let adminLoaded = false;
 async function renderAdmin() {
   if (has('系統維護') && !S._tdLoaded) { S._tdLoaded = true; loadTenderStatus(); }
+  $('impCard').classList.toggle('hide', !has('系統維護'));
+  if (has('系統維護') && !S._impLoaded) { S._impLoaded = true; loadImpAdmin(); }
   if (adminLoaded || !has('帳號管理')) return; adminLoaded = true;
   try { drawUsers(await api('listUsers')); } catch (e) { adminLoaded = false; toast(errMsg(e)); }
 }
+/* ---------- 改善檔案自動匯入（管理頁） ---------- */
+async function loadImpAdmin(d) {
+  try { d = d || await api('impPending'); } catch (e) { $('impInfo').textContent = '讀取失敗：' + errMsg(e); S._impLoaded = false; return; }
+  if (d.folder && !$('impSrc').value) $('impSrc').value = 'https://drive.google.com/drive/folders/' + d.folder;
+  $('impAutoOn').checked = !!d.auto;
+  const i = d.info;
+  $('impInfo').textContent = (d.folder ? '' : '尚未設定來源資料夾。') + (i ? '上次掃描：' + R(i.time) + '（來源共 ' + i.total + ' 個檔案，本次自動匯入 ' + i.auto + '、待對應 ' + i.pending + '）' : '尚未掃描') + (d.auto ? '｜每日自動掃描：開啟' : '｜每日自動掃描：關閉');
+  const opt = it => it.候選.map(c => '<option value="' + esc(c.id) + '">' + esc(c.id + '｜' + R(c.日期) + '｜' + c.項目 + '｜' + c.單位.replace(/管理處$/, '') + '｜' + c.工程名稱) + '</option>').join('');
+  $('impPend').innerHTML = d.items.length ? '<table><thead><tr><th>來源檔案</th><th>對應案件</th><th style="width:130px"></th></tr></thead><tbody>' + d.items.map(it =>
+    '<tr data-src="' + esc(it.來源ID) + '"><td><div style="overflow-wrap:anywhere">' + esc(it.檔名) + '</div><span class="cnt">' + esc((it.路徑 ? it.路徑 + '｜' : '') + (it.說明 || '')) + '</span></td>' +
+    '<td><select class="impSel" style="max-width:100%"><option value="">（請選擇）</option>' + opt(it) + '</select><input class="impId" placeholder="或輸入案件編號" style="width:130px;margin-top:3px"></td>' +
+    '<td><button class="b p lbtn impGo">匯入</button> <button class="b lbtn impSkip">略過</button></td></tr>').join('') + '</tbody></table>' : '<div class="cnt" style="padding:8px">目前沒有待對應的檔案</div>';
+  $('impRecent').innerHTML = (d.recent || []).map(r => '<div>' + esc(R(r.處理時間)) + '　' + esc(r.案件編號) + '　' + esc(r.檔名) + '</div>').join('') || '（無）';
+}
+$('impSaveSet').onclick = async () => {
+  const b = $('impSaveSet'); b.disabled = true;
+  try { await loadImpAdmin(await api('impSetup', { folder: $('impSrc').value.trim(), auto: $('impAutoOn').checked })); toast('已儲存設定', 2500); } catch (e) { toast('儲存失敗：' + errMsg(e), 4000); }
+  b.disabled = false;
+};
+$('impScanNow').onclick = async () => {
+  const b = $('impScanNow'); b.disabled = true; b.textContent = '掃描中…';
+  try { const r = await api('impScan', {}); toast('掃描完成：新檔案 ' + r.newFiles + '，自動匯入 ' + r.auto + '，待對應 ' + r.pending, 5000); await loadImpAdmin(); boot(S.year); } catch (e) { toast('掃描失敗：' + errMsg(e), 5000); }
+  b.disabled = false; b.textContent = '立即掃描';
+};
+$('impPend').addEventListener('click', async e => {
+  const tr = e.target.closest('tr[data-src]'); if (!tr) return;
+  const go = e.target.closest('.impGo'), skip = e.target.closest('.impSkip'); if (!go && !skip) return;
+  const id = tr.querySelector('.impId').value.trim() || tr.querySelector('.impSel').value;
+  if (go && !id) { toast('請先選擇或輸入案件編號', 3000); return; }
+  e.target.disabled = true;
+  try { await api('impAssign', skip ? { srcId: tr.dataset.src, skip: true } : { srcId: tr.dataset.src, caseId: id }); tr.remove(); toast(skip ? '已略過' : '已匯入 ' + id, 2500); } catch (err) { toast('失敗：' + errMsg(err), 4000); e.target.disabled = false; }
+});
 /* 權限勾選區：依群組列出每項功能 */
 $('uPerms').innerHTML = PERM_GROUPS.map(g => '<fieldset><legend>' + g[0] + '</legend>' +
   g[1].map(p => '<label title="' + p[1] + '"><input type="checkbox" value="' + p[0] + '"> ' + p[0] + '<span class="cnt">（' + p[1] + '）</span></label>').join('') + '</fieldset>').join('');
