@@ -1792,8 +1792,7 @@ function renderList() {
     '<td>' + esc([c.委員1, c.委員2].filter(x => x).join('、')) + '</td><td>' + esc(c.領隊) + '</td>' +
     '<td>' + stBadge(c) + '</td><td>' + R(c.紀錄表期限) + '</td><td>' + R(c.報部改善期限) + (c.改善完成 === true ? ' ✔' : '') + '</td>' +
     '<td style="text-align:center">' + (c.檢驗拆驗 ? '<span class="insp ' + (c.檢驗拆驗 === '有' ? 'y' : 'n') + '">' + esc(c.檢驗拆驗) + '</span>' : '') + '</td>' +
-    '<td>' + (+c.改善檔數 > 1 ? '<button class="b lbtn" data-imp="' + c.案件編號 + '" title="共 ' + c.改善檔數 + ' 份，開啟清單">📎 ' + c.改善檔數 + ' 份</button>'
-      : +c.改善檔數 === 1 ? '<button class="b lbtn" data-fid="' + esc(c.改善檔ID) + '" data-fn="' + esc(c.改善檔名) + '" title="線上開啟：' + esc(c.改善檔名) + '">📄 開啟</button>'
+    '<td>' + (+c.改善檔數 >= 1 ? '<button class="b lbtn" data-fid="' + esc(c.改善檔ID) + '" data-fn="' + esc(c.改善檔名) + '" title="線上開啟' + (+c.改善檔數 > 1 ? '最新一份（共 ' + c.改善檔數 + ' 份，其他請開啟案件查看）' : '') + '：' + esc(c.改善檔名) + '">📄 開啟</button>'
       : /^https?:\/\//i.test(c.改善檔案 || '') ? '<button class="b lbtn" data-url="' + esc(c.改善檔案) + '" title="舊資料連結：' + esc(c.改善檔案) + '">🔗 連結</button>' : '') + '</td>' +
     '<td>' + (c.原檔ID && has('督導紀錄檢視') ? '<button class="b lbtn" data-fid="' + esc(c.原檔ID) + '" data-fn="' + esc(c.原檔名) + '" title="線上開啟：' + esc(c.原檔名) + '">📄 原檔</button>' : '') + '</td></tr>').join('') ||
     '<tr><td colspan="12" class="cnt">沒有符合條件的案件</td></tr>';
