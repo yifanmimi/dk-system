@@ -2145,7 +2145,7 @@ function renderTarget() {
   }
   $('tgMonTitle').textContent = y + ' 年度各月累計（計畫期間 ' + R(start) + '～' + R(end) + '）';
   table('tbTgMon', ['月份', '督導當月', '督導累計', '督導達成率', '代部當月', '代部累計', '代部達成率', '合計累計', '總達成率'], mrows, { num: [1, 2, 3, 4, 5, 6, 7] });
-  const left = d => Math.max(0, d);
+  const left = d => d;   // 已超過目標時顯示負值（例：-10 代表超出 10 件）
   tiles('stTiles6', [[y + ' 督導已辦理／目標', ad + ' / ' + (td || '—')], ['代部查核已辦理／目標', ab + ' / ' + (tb || '—')], ['總完成率', pct(ad + ab, td + tb)], ['督導尚差', td ? left(td - ad) : '—'], ['代部查核尚差', tb ? left(tb - ab) : '—']]);
 }
 
