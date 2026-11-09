@@ -261,6 +261,8 @@ button:disabled{opacity:.5;cursor:default}
 .bars .b{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;position:relative}
 .bars .b i{display:block;width:70%;max-width:34px;background:var(--pri);border-radius:4px 4px 0 0;min-height:1px}
 .bars .b:hover i{background:#174b86}
+.bars .b i.sg{border-radius:0;min-height:0}.bars .b i.sg.top{border-radius:4px 4px 0 0}.bars .b:hover i.sg{filter:brightness(.85)}
+.lgd{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--mute)}.lgd i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .bars .b span{font-size:11px;color:var(--mute);margin-bottom:2px}
 .barx{display:flex;gap:6px;padding:2px 4px 0}.barx div{flex:1;text-align:center;font-size:11px;color:var(--mute)}
 .ix table.st td.n,.ix table.st th.n{text-align:right;font-variant-numeric:tabular-nums}
@@ -450,7 +452,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
       <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button><button class="b" data-csv="tbType" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles1"></div>
         <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
-          <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div></div></div>
+          <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div><div class="lgd" id="stMonthLgd"></div></div></div>
       </div>
       <div class="card hide" data-st="6"><h3>2. 年度目標達成<span class="sp"></span><span class="cnt">計算至</span><select id="tgCut" title="今年度計畫期間計算到哪一天"></select><button class="b" data-csv="tbTarget">下載 CSV</button><button class="b" data-csv="tbTarget" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles6"></div>
@@ -1956,6 +1958,21 @@ function bars(id, idx, labels, vals, unit) {
   $(id).innerHTML = vals.map((v, i) => '<div class="b" title="' + labels[i] + '：' + v + ' ' + unit + '"><span>' + (v || '') + '</span><i style="height:' + (v / mx * 100) + '%"></i></div>').join('');
   $(idx).innerHTML = labels.map(l => '<div>' + l + '</div>').join('');
 }
+/* 堆疊長條圖（每月件數依項目分色）：series = [{name, vals, color}]，下方附圖例 */
+// 顏色沿用月曆的項目色（TYPE_COLOR）
+const TYPE_COLOR_MORE = ['#319795', '#dd6b20', '#718096', '#b83280'];
+function stackBars(id, idx, lgd, labels, series, unit) {
+  const tot = labels.map((_, i) => series.reduce((a, s) => a + s.vals[i], 0)), mx = Math.max(1, ...tot);
+  $(id).innerHTML = labels.map((l, i) => {
+    const segs = series.filter(s => s.vals[i] > 0);
+    const tip = l + '：' + tot[i] + ' ' + unit + (segs.length ? '（' + segs.map(s => s.name + ' ' + s.vals[i]).join('、') + '）' : '');
+    // 由上往下排：最後一個項目在最上面，第一個項目在最底下
+    return '<div class="b" title="' + esc(tip) + '"><span>' + (tot[i] || '') + '</span>' +
+      segs.slice().reverse().map((s, k) => '<i class="sg' + (k === 0 ? ' top' : '') + '" style="height:' + (s.vals[i] / mx * 100) + '%;background:' + s.color + '"></i>').join('') + '</div>';
+  }).join('');
+  $(idx).innerHTML = labels.map(l => '<div>' + l + '</div>').join('');
+  $(lgd).innerHTML = series.map(s => '<span><i style="background:' + s.color + '"></i>' + esc(s.name) + ' ' + s.vals.reduce((a, b) => a + b, 0) + '</span>').join('');
+}
 function table(id, head, rows, opt) {
   opt = opt || {};
   const num = opt.num || [];
@@ -1994,8 +2011,11 @@ function renderStats() {
     const d = l.filter(c => c[SI.st] !== '已排定'), r = l.filter(c => c[SI.st] === '已登錄結果');
     return [t, l.length, d.length, r.length, d.length - r.length, a.length - l.length];
   }), { num: [1, 2, 3, 4, 5] });
-  const mon = Array.from({ length: 12 }, (_, i) => live.filter(c => c[SI.m] === i + 1).length);
-  bars('stMonth', 'stMonthX', Array.from({ length: 12 }, (_, i) => (i + 1) + '月'), mon, '件');
+  // 每月件數依項目分色堆疊
+  let more = 0;
+  const series = types.map(t => ({ name: t, color: TYPE_COLOR[t] || TYPE_COLOR_MORE[more++ % TYPE_COLOR_MORE.length],
+    vals: Array.from({ length: 12 }, (_, i) => live.filter(c => c[SI.type] === t && c[SI.m] === i + 1).length) })).filter(s => s.vals.some(v => v));
+  stackBars('stMonth', 'stMonthX', 'stMonthLgd', Array.from({ length: 12 }, (_, i) => (i + 1) + '月'), series, '件');
   if (F.ys.length > 1 && !F.range) {
     $('stYearBox').innerHTML = '<div class="cnt" style="margin:12px 0 4px">年度比較</div><table class="st" id="tbYear"></table>';
     table('tbYear', ['年度', '排定', '已登錄', '平均成績', '甲等比例', '平均缺失數'], F.ys.slice().sort().map(y => {
