@@ -3176,9 +3176,9 @@ async function renderAdmin() {
   try { drawUsers(await api('listUsers')); } catch (e) { adminLoaded = false; toast(errMsg(e)); }
 }
 /* ---------- 資料庫備份（管理頁 → 系統作業，限系統維護） ----------
- * 每週日凌晨 3 點自動複製資料庫試算表到「督導查核系統備份」資料夾，保留最近 12 份；也可立即備份。 */
+ * 每天凌晨 3 點自動複製資料庫試算表到「督導查核系統備份」資料夾，保留最近 30 份；也可立即備份。 */
 function showBackup(d) {
-  $('bkInfo').textContent = (d.auto ? '每週日 03:00 自動備份（保留最近 ' + d.keep + ' 份）' : '尚未設定自動備份') + '｜最後備份：' + (d.last ? R(d.last.split('｜')[0]) : '無');
+  $('bkInfo').textContent = (d.auto ? '每天 03:00 自動備份（保留最近 ' + d.keep + ' 份）' : '尚未設定自動備份') + '｜最後備份：' + (d.last ? R(d.last.split('｜')[0]) : '無');
   $('bkFolder').classList.toggle('hide', !d.folder);
   if (d.folder) $('bkFolder').href = 'https://drive.google.com/drive/folders/' + encodeURIComponent(d.folder);
 }
