@@ -408,6 +408,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
         <h3 style="margin-top:0">系統作業</h3>
         <div class="row"><button class="b" id="btnSync">立即同步 Google 日曆</button><span class="cnt" id="syncInfo"></span></div>
         <div class="row" style="margin-top:10px"><button class="b" id="btnHol">更新國定假日</button><span class="cnt">從新北市資料開放平臺下載行政機關辦公日曆</span></div>
+        <div class="row" style="margin-top:10px"><button class="b" id="btnBackup">立即備份資料庫</button><a class="b hide" id="bkFolder" target="_blank" rel="noopener" style="text-decoration:none">開啟備份資料夾</a><span class="cnt" id="bkInfo"></span></div>
         <div class="row" style="margin-top:10px"><button class="b" id="btnReview">檢視搬遷待確認清單</button></div>
         <div id="reviewBox" class="tbl hide" style="margin-top:10px;max-height:420px"></div>
       </div>
@@ -1457,10 +1458,10 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const has = p => !!(S.me && (S.me.perms || []).indexOf(p) >= 0);
 const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
-  ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視；線上開啟改善檔案'], ['行程編輯', '新增、修改、取消、還原；上傳／刪除改善檔案、改善檔對應案件'], ['行程作廢', '作廢及檢視已作廢']]],
-  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、批次匯入（含暫存區）']]],
+  ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視；線上開啟改善檔案'], ['行程編輯', '新增、修改、取消、還原；上傳／刪除改善檔案'], ['行程作廢', '作廢及檢視已作廢']]],
+  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、紀錄表轉檔、批次匯入（含暫存區）']]],
   ['統計', [['統計', '統計分頁'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
-  ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入、資料庫備份']]]
+  ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入與待對應處理、資料庫備份']]]
 ];
 /** 依權限顯示分頁；目前分頁不能用時切到第一個可用的分頁 */
 function applyPerms() {
@@ -3147,12 +3148,29 @@ let adminLoaded = false;
 async function renderAdmin() {
   if (has('系統維護') && !S._tdLoaded) { S._tdLoaded = true; loadTenderStatus(); }
   $('impCard').classList.toggle('hide', !has('系統維護'));
+  if (has('系統維護') && !S._bkLoaded) { S._bkLoaded = true; loadBackup(); }
   if (has('系統維護') && !S._impLoaded) { S._impLoaded = true; loadImpAdmin(); }
   $('logCard').classList.toggle('hide', !has('帳號管理'));
   if (has('帳號管理') && !S._logLoaded) { S._logLoaded = true; initLog(); }
   if (adminLoaded || !has('帳號管理')) return; adminLoaded = true;
   try { drawUsers(await api('listUsers')); } catch (e) { adminLoaded = false; toast(errMsg(e)); }
 }
+/* ---------- 資料庫備份（管理頁 → 系統作業，限系統維護） ----------
+ * 每週日凌晨 3 點自動複製資料庫試算表到「督導查核系統備份」資料夾，保留最近 12 份；也可立即備份。 */
+function showBackup(d) {
+  $('bkInfo').textContent = (d.auto ? '每週日 03:00 自動備份（保留最近 ' + d.keep + ' 份）' : '尚未設定自動備份') + '｜最後備份：' + (d.last ? R(d.last.split('｜')[0]) : '無');
+  $('bkFolder').classList.toggle('hide', !d.folder);
+  if (d.folder) $('bkFolder').href = 'https://drive.google.com/drive/folders/' + encodeURIComponent(d.folder);
+}
+async function loadBackup() {
+  $('bkInfo').textContent = '讀取中…';
+  try { showBackup(await api('backupStatus')); } catch (e) { $('bkInfo').textContent = '讀取失敗：' + errMsg(e); }
+}
+$('btnBackup').onclick = async () => {
+  loading(true, '備份中…');
+  try { showBackup(await api('backupNow')); toast('已備份資料庫'); }
+  catch (e) { toast(errMsg(e)); } finally { loading(false); }
+};
 /* ---------- 各帳號操作紀錄（管理頁，限帳號管理） ---------- */
 function logBody(txt) {
   let body = txt || '';
