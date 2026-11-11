@@ -11,6 +11,20 @@
 #dkLogin .box{background:#fff;border:1px solid #e1e5ea;border-radius:10px;padding:28px 32px;text-align:center;max-width:420px}
 #dkLogin h1{font-size:20px;margin:0 0 6px}#dkLogin p{color:#6b7785;font-size:13px;margin:6px 0 16px}
 #dkLoginBtn{display:flex;justify-content:center;min-height:44px}
+/* 代碼建議（實驗） */
+#v-sug .exp{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:#fff4e0;color:var(--warn);margin-left:6px}
+#v-sug textarea{width:100%;min-height:120px;resize:vertical}
+#v-sug .sgc{display:flex;flex-direction:column;gap:3px}
+#v-sug .sg{display:flex;gap:6px;align-items:baseline;cursor:pointer;border-radius:4px;padding:1px 4px}
+#v-sug .sg:hover{background:var(--pri2)}
+#v-sug .sg b{font-family:Consolas,monospace;font-size:12.5px;white-space:nowrap}
+#v-sug .sg span{font-size:12px;color:var(--mute)}
+#v-sug .sg.w b{color:var(--ok)}
+#v-sug .lv{display:inline-block;padding:0 7px;border-radius:9px;font-size:12px;white-space:nowrap}
+#v-sug .lv.高{background:#e6f4ea;color:var(--ok)}#v-sug .lv.中{background:#fff4e0;color:var(--warn)}#v-sug .lv.低{background:#fdecea;color:var(--bad)}
+#v-sug .ck{font-size:12px;white-space:nowrap}#v-sug .ck.ok{color:var(--ok)}#v-sug .ck.ng{color:var(--bad)}
+#v-sug .fb select{padding:3px 4px}#v-sug .fb input{width:120px;padding:3px 6px;margin-top:4px}
+#v-sug td.t{max-width:420px;white-space:pre-wrap;word-break:break-all}
 </style>
 <script>window.DK_CONFIG = {"clientId": "613511728115-nvejdmclatm6vni6p56isj5pf1681mg5.apps.googleusercontent.com", "backUrl": "https://script.google.com/macros/s/AKfycbwvRoyKAF7MFZwImiTja-SCBc46PafjhOoMqdm8fmfBXsf79wHIWz9VuyV-N5fgfXYy/exec"};</script>
 <script>
@@ -345,6 +359,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
     <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
     <button data-v="month" data-p="督導月統計表">督導月統計表</button>
+    <button data-v="sug" data-p="代碼建議（實驗）">代碼建議 <span class="badge" style="background:#fff4e0;color:#b26a00">實驗</span></button>
     <button data-v="admin" class="hide" id="navAdmin" data-p="帳號管理,系統維護">管理</button>
   </nav>
 </header>
@@ -522,6 +537,31 @@ input[type=search]::-webkit-search-cancel-button{display:none}
   <div class="mask hide ix" id="stMask"><div class="dlg" style="width:960px"><header><h3 id="stMTitle"></h3><span class="sp"></span><button class="b" id="stMClose">關閉</button></header><div class="bd"><div class="tbl" style="max-height:65vh"><table class="st" id="stMTable"></table></div></div></div></div>
 
   <!-- 督導紀錄（原獨立頁，併入同一頁） -->
+  <!-- 代碼建議（實驗功能；不影響其他分頁與正式資料） -->
+  <section id="v-sug" class="ix hide">
+    <div class="card" style="margin-bottom:12px">
+      <div class="row"><h3 style="margin:0">缺失代碼建議</h3><span class="exp">實驗功能</span><span class="sp"></span><span class="cnt" id="sgInfo">模型讀取中…</span></div>
+      <p class="cnt" style="margin:6px 0 10px">輸入或貼上委員的缺失紀錄（一行一筆），系統依歷年缺失紀錄訓練的模型建議最可能的 3 個缺失代碼。
+        結果僅供參考，<b>不會寫入任何正式資料</b>；計分在您的瀏覽器進行，文字不會送往外部 AI。點建議代碼可複製。</p>
+      <textarea id="sgText" placeholder="例：混凝土澆置後未確實養護，表面有蜂窩情形。&#10;監造單位抽查紀錄表未填寫實測值。"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="b p" id="sgGo">建議代碼</button>
+        <button class="b" id="sgClear">清除</button>
+        <span class="cnt">信心：高＝第 1 名幾乎都正確；中＝多數正確；低＝請從 3 個建議中判斷或自行查代碼</span>
+      </div>
+    </div>
+    <div class="card" id="sgOut" style="margin-bottom:12px;overflow-x:auto"></div>
+    <div class="card" id="sgFbCard" style="margin-bottom:12px">
+      <div class="row"><h3 style="margin:0">回饋統計</h3><span class="cnt">（依您與其他使用者送出的回饋；用來評估模型實際表現）</span><span class="sp"></span><button class="b" id="sgFbReload">重新整理</button></div>
+      <div id="sgFbStat" class="cnt" style="margin-top:8px">尚未讀取</div>
+    </div>
+    <div class="card hide" id="sgAdmin">
+      <h3 style="margin:0 0 6px">更新模型（系統維護）</h3>
+      <p class="cnt" style="margin:0 0 8px">選擇本機 export_model.py 匯出的「代碼建議模型_日期.json」。檔案在瀏覽器壓縮後上傳到擁有者雲端硬碟，並覆蓋目前模型；模型檔屬內部資料，請勿另行公開。</p>
+      <div class="row"><input type="file" id="sgFile" accept=".json"><button class="b p" id="sgUp">上傳模型</button><span class="cnt" id="sgUpMsg"></span></div>
+    </div>
+  </section>
+
   <section id="v-rec" class="hide"><!-- 由 Record.html 自動產生（build_rec.py），請勿直接修改 -->
 <style>
 #v-rec{--bg:#f5f6f8; --panel:#ffffff; --ink:#1f2933; --muted:#6b7785; --line:#e1e5ea;
@@ -1467,7 +1507,8 @@ const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視；線上開啟改善檔案'], ['行程編輯', '新增、修改、取消、還原；上傳／刪除改善檔案'], ['行程作廢', '作廢及檢視已作廢']]],
   ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、紀錄表轉檔、批次匯入（含暫存區）']]],
   ['統計', [['統計', '統計分頁；缺失彙整與統計一覽表下載 Excel、存到雲端硬碟'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
-  ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入與待對應處理、資料庫備份']]]
+  ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入與待對應處理、資料庫備份、代碼建議模型更新']]],
+  ['實驗功能', [['代碼建議（實驗）', '代碼建議分頁：依缺失紀錄文字建議缺失代碼、送出回饋、查看回饋統計（不寫入正式資料；管理者預設不含，需個別勾選）']]]
 ];
 /** 依權限顯示分頁；目前分頁不能用時切到第一個可用的分頁 */
 function applyPerms() {
@@ -1610,14 +1651,213 @@ $('nav').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   setView(b.dataset.v); render();
 });
+/* ===================== 代碼建議（實驗）：瀏覽器端計分 =====================
+ * 與 Python 端 train_code.py／scikit-learn 完全相同的計算：
+ *   1. 清理文字：刪除紀錄中附註的缺失代碼、等級標記與開頭編號
+ *   2. 字元 n-gram（char_wb）：每個詞前後加空白，切 1～3 字片段
+ *   3. TF-IDF：次數取 1+ln(tf)、乘 idf、向量長度正規化
+ *   4. 分數＝Σ 特徵值×權重＋截距；依分數排序取前 N 名
+ * 模型 JSON 由後台提供（需權限），計分全在瀏覽器進行，委員紀錄不送往任何 AI 服務。
+ */
+const CODESUG = (() => {
+  const RE_LEVEL = /[【\[\(（]\s*[LMSlms]\s*[】\]\)）]/g;
+  const RE_CODE_PAREN = /[\(（]\s*\d\s*\.\s*\d{1,2}(?:\s*\.\s*\d{1,2})*\s*[\)）]/g;
+  const RE_CODE_BARE = /(?<![\d.])\d\.\d{2}(?:\.\d{1,2}){0,4}(?![\d.])/g;
+  const RE_LEAD_NO = /^\s*[\(（]?\s*\d{1,2}\s*[\.、．)）]\s*/;
+  const RE_CODE_FIND = /(?<![\d.])(\d\.\d{2}(?:\.\d{2}){0,4})(?![\d.])/;
+
+  /** 清理文字（同 train_code.py 的 clean） */
+  function clean(s) {
+    s = String(s == null ? '' : s);
+    s = s.replace(RE_LEVEL, ' ').replace(RE_CODE_PAREN, ' ').replace(RE_CODE_BARE, ' ').replace(RE_LEAD_NO, '');
+    return s.replace(/\s+/g, ' ').trim();
+  }
+  /** 紀錄中委員自己寫的代碼（沒有則回傳空字串） */
+  function writtenCode(s) { const m = String(s || '').match(RE_CODE_FIND); return m ? m[1] : ''; }
+
+  /** 字元 n-gram（同 scikit-learn analyzer='char_wb'；以 Unicode 字元為單位） */
+  function ngrams(text, mn, mx) {
+    const out = [];
+    text.toLowerCase().split(/\s+/).filter(Boolean).forEach(w0 => {
+      const w = Array.from(' ' + w0 + ' ');
+      for (let n = mn; n <= mx; n++) {
+        let off = 0;
+        out.push(w.slice(off, off + n).join(''));
+        while (off + n < w.length) { off++; out.push(w.slice(off, off + n).join('')); }
+        if (off === 0) break;               // 太短的詞只算一次
+      }
+    });
+    return out;
+  }
+
+  /**
+   * 建議代碼
+   * @param {Object} M 模型 JSON
+   * @param {string} raw 委員紀錄原文
+   * @param {number} topN 回傳前幾名
+   * @return {{text:string, written:string, list:Array<{code,score,std}>, gap:number, level:string}}
+   */
+  function suggest(M, raw, topN) {
+    const text = clean(raw);
+    const tf = new Map();
+    ngrams(text, M.ngram[0], M.ngram[1]).forEach(g => {
+      const f = M.vocab[g];
+      if (f !== undefined) tf.set(f, (tf.get(f) || 0) + 1);
+    });
+    // TF-IDF（sublinear）＋ L2 正規化
+    let norm = 0;
+    const feats = [];
+    tf.forEach((c, f) => { const v = (1 + Math.log(c)) * M.idf[f]; feats.push([f, v]); norm += v * v; });
+    norm = Math.sqrt(norm) || 1;
+    const sc = M.b.slice();
+    feats.forEach(([f, v]) => {
+      const w = M.W[f];
+      if (!w) return;
+      const x = v / norm;
+      for (let i = 0; i < w.length; i += 2) sc[w[i]] += x * w[i + 1];
+    });
+    const idx = sc.map((s, i) => i).sort((a, b) => sc[b] - sc[a]).slice(0, Math.max(topN || 3, 2));
+    const gap = sc[idx[0]] - sc[idx[1]];
+    const level = !text ? '' : gap >= M.conf['高'] ? '高' : gap >= M.conf['中'] ? '中' : '低';
+    return {
+      text, written: writtenCode(raw), gap, level,
+      list: idx.slice(0, topN || 3).map(i => ({ code: M.classes[i], score: sc[i], std: M.std[M.classes[i]] || '' }))
+    };
+  }
+  return { clean, writtenCode, ngrams, suggest };
+})();
+
+/* ===================== 代碼建議（實驗）分頁 ===================== */
+const SUG = (() => {
+  let M = null, ver = '', loading = null, rows = [];
+  /** gzip base64 → JSON（瀏覽器內建解壓縮） */
+  async function unzipJson(b64) {
+    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const txt = await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    return JSON.parse(txt);
+  }
+  async function zipB64(text) {
+    const buf = await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    const u8 = new Uint8Array(buf); let s = '';
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function showInfo(info) {
+    $('sgInfo').textContent = M ? '模型版本 ' + ver + '（' + M.classes.length + ' 個代碼）' + (info && info.at ? '，' + info.at.slice(0, 10) + ' 更新' : '') : '尚未上傳模型';
+  }
+  async function load(force) {
+    if (M && !force) return M;
+    if (loading) return loading;
+    $('sgInfo').textContent = '模型讀取中…';
+    loading = (async () => {
+      try {
+        const r = await api('codeModel', { have: force ? '' : ver });
+        if (r.data) { M = await unzipJson(r.data); ver = r.ver; }
+        showInfo(r.info);
+      } catch (e) { $('sgInfo').textContent = '模型讀取失敗：' + errMsg(e); }
+      loading = null; return M;
+    })();
+    return loading;
+  }
+  function draw() {
+    if (!rows.length) { $('sgOut').innerHTML = '<span class="cnt">輸入缺失紀錄後按「建議代碼」。</span>'; return; }
+    const head = '<table><thead><tr><th>#</th><th>缺失紀錄</th><th>建議代碼（點選複製）</th><th>信心</th><th>委員代碼</th><th>回饋</th></tr></thead><tbody>';
+    const body = rows.map((r, i) => {
+      const inTop = r.written && r.list.some(x => x.code === r.written);
+      const ck = !r.written ? '<span class="cnt">未寫</span>' :
+        '<span class="ck ' + (inTop ? 'ok' : 'ng') + '" title="' + (inTop ? '委員代碼在建議前 3 名' : '委員代碼不在建議前 3 名，請確認代碼與內容是否相符') + '">' + esc(r.written) + (inTop ? ' ✓' : ' ⚠') + '</span>';
+      const sg = r.list.map((x, k) => '<div class="sg' + (x.code === r.written ? ' w' : '') + '" data-code="' + esc(x.code) + '" title="' + esc(x.std) + '"><b>' + (k + 1) + '. ' + esc(x.code) + '</b><span>' + esc(x.std.length > 46 ? x.std.slice(0, 46) + '…' : x.std) + '</span></div>').join('');
+      const fb = r.sent ? '<span class="cnt">已送出（' + esc(r.sent) + '）</span>' :
+        '<div class="fb"><select data-i="' + i + '"><option value="">—</option><option>第1名</option><option>第2名</option><option>第3名</option><option>都不對</option></select>' +
+        '<br><input data-i="' + i + '" class="hide" placeholder="正確代碼（選填）"></div>';
+      return '<tr><td>' + (i + 1) + '</td><td class="t">' + esc(r.raw) + '</td><td><div class="sgc">' + (r.text ? sg : '<span class="cnt">文字太短</span>') + '</div></td><td>' +
+        (r.level ? '<span class="lv ' + r.level + '">' + r.level + '</span>' : '') + '</td><td>' + ck + '</td><td>' + fb + '</td></tr>';
+    }).join('');
+    const pend = rows.some(r => !r.sent);
+    $('sgOut').innerHTML = head + body + '</tbody></table>' + (pend ? '<div class="row" style="margin-top:8px"><button class="b" id="sgSend">送出回饋</button><span class="cnt">只送出有選擇的列；回饋存在資料庫「代碼建議回饋」表，供評估模型使用。</span></div>' : '');
+  }
+  async function run() {
+    const lines = $('sgText').value.split(/\n+/).map(s => s.trim()).filter(Boolean).slice(0, 200);
+    if (!lines.length) { rows = []; draw(); return; }
+    if (!(await load())) { toast('尚未上傳模型，請洽系統維護人員', 3500); return; }
+    rows = lines.map(raw => Object.assign({ raw: raw }, CODESUG.suggest(M, raw, 3)));
+    draw();
+  }
+  async function send() {
+    const out = [];
+    rows.forEach((r, i) => {
+      const sel = $('sgOut').querySelector('select[data-i="' + i + '"]');
+      if (!sel || !sel.value) return;
+      const inp = $('sgOut').querySelector('input[data-i="' + i + '"]');
+      out.push({ i: i, row: { 缺失紀錄: r.raw, 委員代碼: r.written, 建議1: (r.list[0] || {}).code || '', 建議2: (r.list[1] || {}).code || '', 建議3: (r.list[2] || {}).code || '',
+        信心: r.level, 結果: sel.value, 正確代碼: inp ? inp.value.trim() : '' } });
+    });
+    if (!out.length) { toast('請先在「回饋」欄選擇結果', 2500); return; }
+    try {
+      await api('codeFeedback', { rows: out.map(x => x.row) });
+      out.forEach(x => { rows[x.i].sent = x.row.結果; });
+      draw(); toast('已送出 ' + out.length + ' 筆回饋', 2500); fbStat();
+    } catch (e) { toast('送出失敗：' + errMsg(e), 4000); }
+  }
+  async function fbStat() {
+    try {
+      const d = await api('codeFbStat', {});
+      if (!d.rows.length) { $('sgFbStat').textContent = '尚無回饋'; return; }
+      const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+      $('sgFbStat').innerHTML = '<table><thead><tr><th>模型版本</th><th>回饋筆數</th><th>第 1 名正確</th><th>前 3 名內</th><th>高信心筆數</th><th>高信心第 1 名正確</th></tr></thead><tbody>' +
+        d.rows.map(r => '<tr><td>' + esc(r.版本) + '</td><td>' + r.筆數 + '</td><td>' + pct(r.第1名, r.筆數) + '</td><td>' + pct(r.前3名, r.筆數) + '</td><td>' + r.高信心 + '</td><td>' + pct(r.高信心第1名, r.高信心) + '</td></tr>').join('') + '</tbody></table>';
+    } catch (e) { $('sgFbStat').textContent = '讀取失敗：' + errMsg(e); }
+  }
+  async function upload() {
+    const f = $('sgFile').files[0];
+    if (!f) { toast('請先選擇模型檔', 2500); return; }
+    $('sgUp').disabled = true; $('sgUpMsg').textContent = '檢查與壓縮中…';
+    try {
+      const txt = await f.text();
+      const m = JSON.parse(txt);
+      if (!m.vocab || !m.W || !m.classes) throw new Error('不是代碼建議模型檔');
+      $('sgUpMsg').textContent = '上傳中…';
+      const info = await api('codeModelSave', { data: await zipB64(txt) });
+      $('sgUpMsg').textContent = '已更新：版本 ' + info.ver + '，' + info.codes + ' 個代碼';
+      M = null; ver = ''; await load(true); if (rows.length) run();
+    } catch (e) { $('sgUpMsg').textContent = '失敗：' + errMsg(e); }
+    $('sgUp').disabled = false;
+  }
+  let started = false;
+  function open() {
+    if (!S.me) { setTimeout(open, 300); return; }      // 登入資料尚未讀完（例如網址直接開此分頁）就稍候再初始化
+    $('sgAdmin').classList.toggle('hide', !has('系統維護'));
+    if (started) return;
+    started = true;
+    draw(); load(); fbStat();
+    $('sgGo').onclick = run;
+    $('sgClear').onclick = () => { $('sgText').value = ''; rows = []; draw(); };
+    $('sgFbReload').onclick = fbStat;
+    $('sgUp').onclick = upload;
+    $('sgOut').addEventListener('click', e => {
+      if (e.target.id === 'sgSend') { send(); return; }
+      const s = e.target.closest('.sg'); if (!s) return;
+      const code = s.dataset.code;
+      (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(() => toast('已複製 ' + code, 1500), () => toast(code, 2500));
+    });
+    $('sgOut').addEventListener('change', e => {
+      const sel = e.target.closest('select[data-i]'); if (!sel) return;
+      const inp = $('sgOut').querySelector('input[data-i="' + sel.dataset.i + '"]');
+      if (inp) inp.classList.toggle('hide', sel.value !== '都不對');
+    });
+  }
+  return { open: open };
+})();
 function setView(v) {
   if (!$('v-' + v)) v = 'list';
   S.view = v;
   [...$('nav').querySelectorAll('button')].forEach(x => x.classList.toggle('on', x.dataset.v === v));
-  ['cal', 'list', 'due', 'admin', 'rec', 'stat', 'month'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
+  ['cal', 'list', 'due', 'admin', 'rec', 'stat', 'month', 'sug'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
   // 督導紀錄有自己的案件清單（不分年度），隱藏年度選單與新增鈕
-  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month');
-  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || !(S.me && canEdit()));
+  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || v === 'sug');
+  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || v === 'sug' || !(S.me && canEdit()));
+  if (v === 'sug') SUG.open();
   if (v === 'stat' || v === 'month') setTimeout(loadStats, 0);
   if (v === 'rec' && !S._recStarted) { S._recStarted = true; REC.start(); }
 }
