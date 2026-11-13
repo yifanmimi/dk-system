@@ -512,7 +512,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
       <div class="card"><h3>年度目標達成<span class="sp"></span><span class="cnt">年度</span><span class="yrs" id="tgYears"></span><span class="cnt">計算至</span><select id="tgCut" title="今年度計畫期間計算到哪一天"></select><button class="b" data-csv="tbTarget">下載 CSV</button><button class="b" data-csv="tbTarget" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles6"></div>
         <table class="st" id="tbTarget"></table>
-        <div class="note2">依原「案件統計」算法：計畫期間＝計畫起始日至計算日（過去年度到年底），只計「督導」與「代部查核」，不含已取消；不套用統計頁的項目與單位篩選；年度依本頁勾選（可複選，各月累計以最新勾選年度計算）。</div>
+        <div class="note2">依原「案件統計」算法：計畫期間＝計畫起始日至計算日（過去年度到年底），只計「督導」與「代部查核」，不含已取消；不套用統計頁的項目與單位篩選；年度依本頁勾選（可複選，摘要與各月累計逐年列出）。</div>
         <div class="cnt" style="margin:14px 0 4px" id="tgMonTitle"></div>
         <div class="tbl" style="max-height:460px"><table class="st" id="tbTgMon"></table></div>
         <div class="row" style="margin-top:6px"><button class="b" data-csv="tbTgMon">下載各月 CSV</button><button class="b" data-csv="tbTgMon" data-fmt="xlsx">下載各月 Excel</button></div>
@@ -2407,25 +2407,30 @@ function renderTarget() {
     return [y, whole('督導'), whole('代部查核'), '<span style="white-space:nowrap">' + R(start) + '～' + R(end) + '</span>', d, td || '—', prog(d, td), b, tb || '—', prog(b, tb), prog(d + b, td + tb)];
   });
   table('tbTarget', ['年度', '整年督導（含已排定）', '整年代部查核（含已排定）', '計畫期間', '督導已辦理', '督導目標', '督導完成率', '代部查核已辦理', '代部查核目標', '代部完成率', '總完成率'], rows, { num: [1, 2, 4, 5, 7, 8] });
-  // 最新勾選年度的各月累計
-  const y = ys[0];
-  if (!y) { $('tbTgMon').innerHTML = ''; $('tgMonTitle').textContent = ''; tiles('stTiles6', []); return; }
-  const { start, end, t } = targetRange(y), wy = +y + 1911;
-  const td = +t.督導 || 0, tb = +t.代部查核 || 0;
-  const yr = cs.filter(c => c[SI.y] === y && c[SI.date] && c[SI.date] >= start && c[SI.date] <= end);
-  let ad = 0, ab = 0;
-  const mrows = [];
-  for (let m = +start.slice(5, 7) || 1; m <= 12; m++) {
-    const ms = wy + '-' + pad(m);
-    const d = yr.filter(c => c[SI.type] === '督導' && c[SI.date].slice(0, 7) === ms).length, b = yr.filter(c => c[SI.type] === '代部查核' && c[SI.date].slice(0, 7) === ms).length;
-    ad += d; ab += b;
-    if (ms > end.slice(0, 7)) break;
-    mrows.push([m + ' 月', d, ad, td ? pct(ad, td) : '—', b, ab, tb ? pct(ab, tb) : '—', ad + ab, td + tb ? prog(ad + ab, td + tb) : '—']);
-  }
-  $('tgMonTitle').textContent = y + ' 年度各月累計（計畫期間 ' + R(start) + '～' + R(end) + '）';
-  table('tbTgMon', ['月份', '督導當月', '督導累計', '督導達成率', '代部當月', '代部累計', '代部達成率', '合計累計', '總達成率'], mrows, { num: [1, 2, 3, 4, 5, 6, 7] });
+  // 各勾選年度的各月累計與摘要（勾選多年時逐年列出，新到舊）
+  if (!ys.length) { $('tbTgMon').innerHTML = ''; $('tgMonTitle').textContent = ''; tiles('stTiles6', []); return; }
+  const multi = ys.length > 1, mrows = [], tileRows = [], periods = [];
   const left = d => d;   // 已超過目標時顯示負值（例：-10 代表超出 10 件）
-  tiles('stTiles6', [[y + ' 督導已辦理／目標', ad + ' / ' + (td || '—')], ['代部查核已辦理／目標', ab + ' / ' + (tb || '—')], ['總完成率', pct(ad + ab, td + tb)], ['督導尚差', td ? left(td - ad) : '—'], ['代部查核尚差', tb ? left(tb - ab) : '—']]);
+  ys.forEach(y => {
+    const { start, end, t } = targetRange(y), wy = +y + 1911;
+    const td = +t.督導 || 0, tb = +t.代部查核 || 0;
+    const yr = cs.filter(c => c[SI.y] === y && c[SI.date] && c[SI.date] >= start && c[SI.date] <= end);
+    let ad = 0, ab = 0;
+    for (let m = +start.slice(5, 7) || 1; m <= 12; m++) {
+      const ms = wy + '-' + pad(m);
+      const d = yr.filter(c => c[SI.type] === '督導' && c[SI.date].slice(0, 7) === ms).length, b = yr.filter(c => c[SI.type] === '代部查核' && c[SI.date].slice(0, 7) === ms).length;
+      ad += d; ab += b;
+      if (ms > end.slice(0, 7)) break;
+      mrows.push((multi ? [y] : []).concat([m + ' 月', d, ad, td ? pct(ad, td) : '—', b, ab, tb ? pct(ab, tb) : '—', ad + ab, td + tb ? prog(ad + ab, td + tb) : '—']));
+    }
+    periods.push((multi ? y + ' 年度 ' : '') + R(start) + '～' + R(end));
+    tileRows.push([[y + ' 督導已辦理／目標', ad + ' / ' + (td || '—')], ['代部查核已辦理／目標', ab + ' / ' + (tb || '—')], ['總完成率', pct(ad + ab, td + tb)], ['督導尚差', td ? left(td - ad) : '—'], ['代部查核尚差', tb ? left(tb - ab) : '—']]);
+  });
+  $('tgMonTitle').textContent = (multi ? ys.join('、') + ' 年度' : ys[0] + ' 年度') + '各月累計（計畫期間 ' + periods.join('；') + '）';
+  const mh = ['月份', '督導當月', '督導累計', '督導達成率', '代部當月', '代部累計', '代部達成率', '合計累計', '總達成率'];
+  table('tbTgMon', (multi ? ['年度'] : []).concat(mh), mrows, { num: multi ? [0, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7] });
+  // 摘要卡片：每個年度一列
+  $('stTiles6').innerHTML = tileRows.map(arr => '<div class="tiles" style="width:100%;margin:0">' + arr.map(([l, v]) => '<div class="tile"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('') + '</div>').join('');
 }
 
 /* ===================== 歷年成績比較 ===================== */
