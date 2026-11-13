@@ -3017,7 +3017,8 @@ document.addEventListener('click', e => {
   const strip = v => typeof v === 'number' ? v : String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
   const head = t._data.head.map(strip), rows = t._data.rows.map(r => r.map(strip));
   const title = b.closest('.card').querySelector('h3').firstChild.textContent.trim();
-  const F2 = statFilter(), name = '統計_' + title + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '');
+  const F2 = statFilter(), name = b.closest('#v-goal') ? '年度目標達成_' + (S.goalYears || []).slice().sort().join('-') + (b.dataset.csv === 'tbTgMon' ? '_各月' : '') :
+    '統計_' + title + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '');
   if (b.dataset.fmt === 'xlsx') downloadXlsx(name, title.replace(/^\d+\.\s*/, ''), head, rows).catch(e => toast('Excel 產生失敗：' + errMsg(e), 4000));
   else downloadCsv(name, head, rows);
 });
