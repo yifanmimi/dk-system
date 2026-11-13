@@ -358,6 +358,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
     <button data-v="due" data-p="行程檢視">期限提醒</button>
     <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
+    <button data-v="goal" data-p="統計">年度目標</button>
     <button data-v="month" data-p="督導月統計表">督導月統計表</button>
     <button data-v="sug" data-p="代碼建議（實驗）">代碼建議 <span class="badge" style="background:#fff4e0;color:#b26a00">實驗</span></button>
     <button data-v="admin" class="hide" id="navAdmin" data-p="帳號管理,系統維護">管理</button>
@@ -462,7 +463,7 @@ input[type=search]::-webkit-search-cancel-button{display:none}
       <span class="sp"></span><span class="cnt" id="stInfo">讀取中…</span>
     </div>
     <div class="sttabs" id="stTabs">
-      <button data-st="1" class="on">年度執行概況</button><button data-st="6">年度目標達成</button><button data-st="2">成績與等第</button><button data-st="7">歷年成績比較</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
+      <button data-st="1" class="on">年度執行概況</button><button data-st="2">成績與等第</button><button data-st="7">歷年成績比較</button><button data-st="3">各單位綜合表</button><button data-st="4">缺失分析</button><button data-st="5" id="stTabCom">委員統計</button>
     </div>
     <div class="stgrid">
       <div class="card" data-st="1"><h3>1. 年度執行概況<span class="sp"></span><button class="b" data-csv="tbType">下載 CSV</button><button class="b" data-csv="tbType" data-fmt="xlsx">下載 Excel</button></h3>
@@ -470,31 +471,23 @@ input[type=search]::-webkit-search-cancel-button{display:none}
         <div class="two"><div><table class="st" id="tbType"></table><div id="stYearBox"></div></div>
           <div><div class="cnt" style="margin-bottom:4px">每月件數（不含已取消）</div><div class="bars" id="stMonth"></div><div class="barx" id="stMonthX"></div><div class="lgd" id="stMonthLgd"></div></div></div>
       </div>
-      <div class="card hide" data-st="6"><h3>2. 年度目標達成<span class="sp"></span><span class="cnt">計算至</span><select id="tgCut" title="今年度計畫期間計算到哪一天"></select><button class="b" data-csv="tbTarget">下載 CSV</button><button class="b" data-csv="tbTarget" data-fmt="xlsx">下載 Excel</button></h3>
-        <div class="tiles" id="stTiles6"></div>
-        <table class="st" id="tbTarget"></table>
-        <div class="note2">依原「案件統計」算法：計畫期間＝計畫起始日至計算日（過去年度到年底），只計「督導」與「代部查核」，不含已取消；本頁不套用上方的項目與單位篩選，年度依上方勾選。</div>
-        <div class="cnt" style="margin:14px 0 4px" id="tgMonTitle"></div>
-        <div class="tbl" style="max-height:460px"><table class="st" id="tbTgMon"></table></div>
-        <div class="row" style="margin-top:6px"><button class="b" data-csv="tbTgMon">下載各月 CSV</button><button class="b" data-csv="tbTgMon" data-fmt="xlsx">下載各月 Excel</button></div>
-        <div class="tgset hide" id="tgSet"><b>目標設定</b><select id="tgY"></select><label>督導目標 <input type="number" id="tgDu" min="0"></label><label>代部查核目標 <input type="number" id="tgDb" min="0"></label><label>計畫起始日 <input type="date" id="tgStart"></label><button class="b p" id="tgSave">儲存</button><span class="cnt" id="tgMsg"></span></div>
-      </div>
-      <div class="card hide" data-st="2"><h3>3. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button><button class="b" data-csv="tbGrade" data-fmt="xlsx">下載 Excel</button></h3>
+      
+      <div class="card hide" data-st="2"><h3>2. 成績與等第<span class="sp"></span><button class="b" data-csv="tbGrade">下載 CSV</button><button class="b" data-csv="tbGrade" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles2"></div>
         <div class="two"><div><table class="st" id="tbGrade"></table><div class="note2">等第沿用原統計表：80 分以上甲、70–79 乙、未滿 70 丙。</div></div>
           <div><div class="cnt" style="margin-bottom:4px">成績分布（每 5 分一級）</div><div class="bars" id="stHist"></div><div class="barx" id="stHistX"></div></div></div>
       </div>
-      <div class="card hide" data-st="7"><h3>4. 歷年成績比較<span class="sp"></span><button class="b" data-csv="tbHist">下載 CSV</button><button class="b" data-csv="tbHist" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="7"><h3>3. 歷年成績比較<span class="sp"></span><button class="b" data-csv="tbHist">下載 CSV</button><button class="b" data-csv="tbHist" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:520px"><table class="st" id="tbHist"></table></div>
         <div class="note2">依上方勾選的年度、項目與單位篩選；等第：80 分以上甲、70–79 乙、未滿 70 丙（不計分者不列入）。點欄名可排序。</div>
         <div class="two" style="margin-top:14px"><div><div class="cnt" style="margin-bottom:4px">自辦／委外監造比較</div><table class="st" id="tbSelf"></table><div class="row" style="margin-top:6px"><button class="b" data-csv="tbSelf" data-fmt="xlsx">下載 Excel</button></div></div>
           <div><div class="cnt" style="margin-bottom:4px">金額等級比較（依發包預算）</div><table class="st" id="tbAmt"></table><div class="row" style="margin-top:6px"><button class="b" data-csv="tbAmt" data-fmt="xlsx">下載 Excel</button></div></div></div>
       </div>
-      <div class="card hide" data-st="3"><h3>5. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button><button class="b" data-csv="tbUnit" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="3"><h3>4. 各單位綜合表<span class="sp"></span><button class="b" data-csv="tbUnit">下載 CSV</button><button class="b" data-csv="tbUnit" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbUnit"></table></div>
         <div class="note2">點欄名可排序。平均缺失數只計已建立缺失的案件（排除「缺失未建立」），避免低估。</div>
       </div>
-      <div class="card hide" data-st="4"><h3>6. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button><button class="b" data-csv="tbCode" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" data-st="4"><h3>5. 缺失分析<span class="sp"></span><button class="b" data-csv="tbCode">下載 CSV</button><button class="b" data-csv="tbCode" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tiles" id="stTiles4"></div>
         <div class="two"><div><table class="st" id="tbCat"></table><table class="st" id="tbSec" style="margin-top:12px"></table></div><div><table class="st" id="tbLevel"></table></div></div>
         <div class="catbtn" id="catBtns"></div>
@@ -506,13 +499,27 @@ input[type=search]::-webkit-search-cancel-button{display:none}
         <div class="cnt" style="margin-bottom:4px">依上方篩選（年度或日期區間、項目、單位）彙整已建立缺失的案件；數字為缺失筆數。類別、項目依「缺失扣點表」，對應不到的代碼列入「其他（未對應代碼）」。報告附錄：項目只勾「督導」＝督導一覽表；勾「代部查核、本部查核、中央查核」＝查核一覽表。</div>
         <div class="tbl" style="max-height:600px"><table class="st defsum" id="tbDefSum"></table></div>
       </div>
-      <div class="card hide" id="stComBox" data-st="5"><h3>7. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button><button class="b" data-csv="tbCom" data-fmt="xlsx">下載 Excel</button></h3>
+      <div class="card hide" id="stComBox" data-st="5"><h3>6. 委員統計（需「委員統計」權限）<span class="sp"></span><button class="b" data-csv="tbCom">下載 CSV</button><button class="b" data-csv="tbCom" data-fmt="xlsx">下載 Excel</button></h3>
         <div class="tbl" style="max-height:480px"><table class="st" id="tbCom"></table></div>
         <div class="note2">點選委員可看出席案件明細。以委員出席的案件計算；同一案件兩位委員共用同一成績，平均給分反映的是「該委員參與案件的成績」，不是個人評分。此表涉及對特定人員的分析，請勿外流。</div>
       </div>
     </div>
   </section>
   <!-- 督導月統計表 -->
+  <!-- 年度目標（由統計拉出，年度自行勾選） -->
+  <section id="v-goal" class="ix hide">
+    <div class="stgrid">
+      <div class="card"><h3>年度目標達成<span class="sp"></span><span class="cnt">年度</span><span class="yrs" id="tgYears"></span><span class="cnt">計算至</span><select id="tgCut" title="今年度計畫期間計算到哪一天"></select><button class="b" data-csv="tbTarget">下載 CSV</button><button class="b" data-csv="tbTarget" data-fmt="xlsx">下載 Excel</button></h3>
+        <div class="tiles" id="stTiles6"></div>
+        <table class="st" id="tbTarget"></table>
+        <div class="note2">依原「案件統計」算法：計畫期間＝計畫起始日至計算日（過去年度到年底），只計「督導」與「代部查核」，不含已取消；不套用統計頁的項目與單位篩選；年度依本頁勾選（可複選，各月累計以最新勾選年度計算）。</div>
+        <div class="cnt" style="margin:14px 0 4px" id="tgMonTitle"></div>
+        <div class="tbl" style="max-height:460px"><table class="st" id="tbTgMon"></table></div>
+        <div class="row" style="margin-top:6px"><button class="b" data-csv="tbTgMon">下載各月 CSV</button><button class="b" data-csv="tbTgMon" data-fmt="xlsx">下載各月 Excel</button></div>
+        <div class="tgset hide" id="tgSet"><b>目標設定</b><select id="tgY"></select><label>督導目標 <input type="number" id="tgDu" min="0"></label><label>代部查核目標 <input type="number" id="tgDb" min="0"></label><label>計畫起始日 <input type="date" id="tgStart"></label><button class="b p" id="tgSave">儲存</button><span class="cnt" id="tgMsg"></span></div>
+      </div>
+    </div>
+  </section>
   <section id="v-month" class="ix hide">
     <div class="card">
       <div class="mrf"><b>督導月統計表</b><select id="mrY" title="年度"></select><select id="mrM" title="月份"></select><label class="cnt">項目 <select id="mrT"></select></label><span class="sp" style="flex:1"></span><button class="b hide" id="mrSave">儲存手填欄位</button><button class="b p" id="mrXlsx">下載 Excel</button><span class="cnt" id="mrInfo"></span></div>
@@ -1506,7 +1513,7 @@ const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視；線上開啟改善檔案'], ['行程編輯', '新增、修改、取消、還原；上傳／刪除改善檔案'], ['行程作廢', '作廢及檢視已作廢']]],
   ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、紀錄表轉檔、批次匯入（含暫存區）']]],
-  ['統計', [['統計', '統計分頁；缺失彙整與統計一覽表下載 Excel、存到雲端硬碟'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
+  ['統計', [['統計', '統計分頁、年度目標頁；缺失彙整與統計一覽表下載 Excel、存到雲端硬碟'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
   ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入與待對應處理、資料庫備份、代碼建議模型更新']]],
   ['實驗功能', [['代碼建議（實驗）', '代碼建議分頁：依缺失紀錄文字建議缺失代碼、送出回饋、查看回饋統計（不寫入正式資料；管理者預設不含，需個別勾選）']]]
 ];
@@ -1853,12 +1860,12 @@ function setView(v) {
   if (!$('v-' + v)) v = 'list';
   S.view = v;
   [...$('nav').querySelectorAll('button')].forEach(x => x.classList.toggle('on', x.dataset.v === v));
-  ['cal', 'list', 'due', 'admin', 'rec', 'stat', 'month', 'sug'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
+  ['cal', 'list', 'due', 'admin', 'rec', 'stat', 'goal', 'month', 'sug'].forEach(x => $('v-' + x).classList.toggle('hide', x !== v));
   // 督導紀錄有自己的案件清單（不分年度），隱藏年度選單與新增鈕
-  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || v === 'sug');
-  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'month' || v === 'sug' || !(S.me && canEdit()));
+  $('selYear').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'goal' || v === 'month' || v === 'sug');
+  $('btnNew').classList.toggle('hide', v === 'rec' || v === 'stat' || v === 'goal' || v === 'month' || v === 'sug' || !(S.me && canEdit()));
   if (v === 'sug') SUG.open();
-  if (v === 'stat' || v === 'month') setTimeout(loadStats, 0);
+  if (v === 'stat' || v === 'goal' || v === 'month') setTimeout(loadStats, 0);
   if (v === 'rec' && !S._recStarted) { S._recStarted = true; REC.start(); }
 }
 ['c日期', 'c報部改善期限', 'stFrom', 'stTo', 'tgStart'].forEach(rocInput);
@@ -1881,7 +1888,7 @@ function dataChanged(opt) {
   _dcT = setTimeout(async () => {
     await boot(S.year, true);
     if (S._recStarted && window.REC && REC.reload) REC.reload();
-    if (S.view === 'stat' || S.view === 'month') loadStats();
+    if (S.view === 'stat' || S.view === 'goal' || S.view === 'month') loadStats();
   }, 300);
 }
 let _hiddenAt = 0;
@@ -2179,6 +2186,7 @@ function showStatTab(n) {
   if (n) { try { localStorage.setItem('dk_stat_tab', n); } catch (e) { } }
   n = n || (() => { try { return localStorage.getItem('dk_stat_tab'); } catch (e) { return null; } })() || '1';
   if (n === '5' && S.stat && S.stat.committeeHidden) n = '1';
+  if (!$('stTabs').querySelector('button[data-st="' + n + '"]')) n = '1';   // 舊的「年度目標達成」頁籤已移到獨立頁面
   [...$('stTabs').querySelectorAll('button')].forEach(b => b.classList.toggle('on', b.dataset.st === n));
   [...document.querySelectorAll('#v-stat .stgrid > .card')].forEach(c => c.classList.toggle('hide', c.dataset.st !== n));
 }
@@ -2225,7 +2233,8 @@ function table(id, head, rows, opt) {
   $(id)._data = { head, rows, opt };
 }
 /* 統計表點欄名排序（數字欄由大到小、文字欄依筆畫） */
-document.querySelector('#v-stat').addEventListener('click', e => {
+document.addEventListener('click', e => {
+  if (!e.target.closest('#v-stat, #v-goal')) return;
   const th = e.target.closest('th[data-i]'); if (!th) return;
   const t = th.closest('table'), D = t._data, i = +th.dataset.i;
   const dir = D.opt._si === i ? -D.opt._sd : (D.opt.num.indexOf(i) >= 0 ? -1 : 1);
@@ -2348,6 +2357,9 @@ const CAT_ORDER = ['品質管理制度', '施工品質', '施工進度', '規劃
 /* ===================== 年度目標達成 ===================== */
 function initTargetCtl(ys) {
   const cur = $('tgCut').value || 'today', wy = new Date().getFullYear();
+  const gy = (S.goalYears || [ys[0]]).filter(y => ys.indexOf(y) >= 0);
+  S.goalYears = gy.length ? gy : [ys[0]];
+  $('tgYears').innerHTML = ys.map(y => '<label><input type="checkbox" value="' + y + '"' + (S.goalYears.indexOf(y) >= 0 ? ' checked' : '') + '> ' + y + '</label>').join('');
   $('tgCut').innerHTML = '<option value="today">今天</option>' + Array.from({ length: 12 }, (_, i) => '<option value="' + (i + 1) + '">' + (i + 1) + ' 月底</option>').join('');
   $('tgCut').value = cur;
   const yy = [...new Set(ys.concat([ys[0] + 1]))].sort((a, b) => b - a);
@@ -2364,6 +2376,7 @@ function fillTargetForm() {
 }
 $('tgY').onchange = fillTargetForm;
 $('tgCut').onchange = () => renderTarget();
+$('tgYears').addEventListener('change', () => { S.goalYears = [...$('tgYears').querySelectorAll('input:checked')].map(i => +i.value); renderTarget(); });
 $('tgSave').onclick = async () => {
   $('tgMsg').textContent = '儲存中…';
   try {
@@ -2381,7 +2394,7 @@ function targetRange(y) {
 }
 function renderTarget() {
   if (!S.stat) return;
-  const ys = (S.statYears || []).slice().sort((a, b) => b - a);
+  const ys = (S.goalYears || []).slice().sort((a, b) => b - a);
   const cs = S.stat.cases.filter(c => c[SI.st] !== '已取消');
   const TY = ['督導', '代部查核'];
   const prog = (a, b) => b ? '<span style="white-space:nowrap"><span class="prog' + (a >= b ? ' ok' : '') + '"><i style="width:' + Math.min(100, a / b * 100) + '%"></i></span>' + pct(a, b) + '</span>' : '—';
@@ -2997,13 +3010,15 @@ async function xlsxBook(name, sheets) {
   saveBlob(await z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name + '.xlsx');
 }
 /* 下載 CSV（統計表） */
-$('v-stat').addEventListener('click', e => {
+document.addEventListener('click', e => {
+  if (!e.target.closest('#v-stat, #v-goal')) return;
   const b = e.target.closest('[data-csv]'); if (!b) return;
   const t = $(b.dataset.csv); if (!t || !t._data) return;
   const strip = v => typeof v === 'number' ? v : String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
   const head = t._data.head.map(strip), rows = t._data.rows.map(r => r.map(strip));
   const title = b.closest('.card').querySelector('h3').firstChild.textContent.trim();
-  const F2 = statFilter(), name = '統計_' + title + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '');
+  const F2 = statFilter(), name = b.closest('#v-goal') ? '年度目標達成_' + (S.goalYears || []).slice().sort().join('-') + (b.dataset.csv === 'tbTgMon' ? '_各月' : '') :
+    '統計_' + title + '_' + (F2.range ? (F2.from || '') + '至' + (F2.to || '') : (S.statYears || []).join('-')) + (F2.un ? '_' + F2.un : F2.kd ? '_' + F2.kd : '');
   if (b.dataset.fmt === 'xlsx') downloadXlsx(name, title.replace(/^\d+\.\s*/, ''), head, rows).catch(e => toast('Excel 產生失敗：' + errMsg(e), 4000));
   else downloadCsv(name, head, rows);
 });
