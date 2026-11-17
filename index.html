@@ -3826,6 +3826,8 @@ boot();
   // 「更多」按鈕（自行處理點擊，不交給分頁切換）
   const more = document.createElement('button');
   more.id = 'mobMoreBtn'; more.type = 'button';
+  // 權限：applyPerms 會讀每個分頁按鈕的 data-p；「更多」只要有任何一個分頁可用就顯示（內含登出）
+  more.dataset.p = [...new Set([...nav.querySelectorAll('button[data-p]')].flatMap(b => b.dataset.p.split(',')))].join(',');
   more.innerHTML = '<span class="mi">' + svg('more') + '</span>更多';
   more.addEventListener('click', e => { e.stopPropagation(); openMore(); });
   nav.appendChild(more);
