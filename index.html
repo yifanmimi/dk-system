@@ -341,6 +341,81 @@ table.mr td.hl{background:#fffbe6}
 .clrx:hover{background:#e9edf2;color:#333}
 .clrw.has .clrx{display:block}
 input[type=search]::-webkit-search-cancel-button{display:none}
+
+/* ===================== 手機版（640px 以下） ===================== */
+nav .mi{display:none}
+#mobFilterBtn,#mobChips,#mobMoreBtn{display:none}
+dialog.msheet{border:0;padding:0;margin:auto 0 0;width:100%;max-width:100%;max-height:85dvh;border-radius:16px 16px 0 0;background:#fff;color:var(--ink)}
+dialog.msheet:modal{overscroll-behavior:contain}
+dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll-behavior:contain}
+.msheet .mh{width:40px;height:4px;border-radius:2px;background:#cdd4dc;margin:10px auto 6px}
+.msheet .mb{padding:4px 16px calc(16px + env(safe-area-inset-bottom))}
+.msheet h3{margin:6px 0 10px;font-size:15px}
+.msheet .mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.msheet .mgrid button{border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 4px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.msheet .mgrid button.on{border-color:var(--pri);color:var(--pri);font-weight:600}
+.msheet .mgrid svg,nav .mi svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.msheet .mgrid svg{stroke:var(--pri)}
+.msheet .mme{font-size:13px;color:var(--mute);margin:12px 0 0}
+.msheet .mf label{display:block;font-size:12px;color:var(--mute);margin:10px 0 4px}
+.msheet .mf select{width:100%;padding:9px 10px;font-size:15px}
+.msheet .mbtns{display:flex;gap:10px;margin-top:16px}
+.msheet .mbtns button{flex:1;padding:10px;font-size:15px}
+@media (max-width:640px){
+  .bar{flex-wrap:nowrap;padding:8px 12px;gap:8px}
+  .brand{font-size:16px;white-space:nowrap}
+  #selYear{padding:4px 6px}
+  .bar .me,.bar .me + button.b:not(#btnNew){display:none}
+  #btnNew{position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;padding:0;font-size:0;z-index:31;box-shadow:0 4px 12px rgba(31,95,168,.45)}
+  #btnNew::after{content:"＋";font-size:30px;line-height:56px}
+  nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid var(--line);padding:0 0 env(safe-area-inset-bottom);gap:0}
+  nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:7px 2px 6px;border-bottom:0;border-top:2px solid transparent;font-size:11px;min-width:0}
+  nav button.on{border-top-color:var(--pri);border-bottom:0}
+  nav button.mmore{display:none}
+  nav .mi{display:block;line-height:0}
+  nav button[data-s]{font-size:0}
+  nav button[data-s]::after{content:attr(data-s);font-size:11px}
+  #mobMoreBtn{display:flex}
+  main{padding:12px 12px calc(84px + env(safe-area-inset-bottom))}
+  /* 清單：篩選收進面板 */
+  #v-list > .row{gap:8px;margin-bottom:6px!important}
+  #v-list > .row > select,#btnCsv,#btnXlsx{display:none}
+  #v-list > .row .clrw{flex:1;min-width:0!important}
+  #fKey{min-width:0!important;width:100%;border-radius:20px;padding:8px 12px}
+  #v-list > .row > .sp{display:none}
+  #listCnt{order:9;width:100%;font-size:12px}
+  #mobFilterBtn{display:inline-block;border-radius:20px;border-color:var(--pri);color:var(--pri);white-space:nowrap}
+  #mobChips{display:flex;flex-wrap:wrap;gap:6px;width:100%;order:8}
+  #mobChips:empty{display:none}
+  #mobChips button{border:0;background:var(--pri2);color:var(--pri);border-radius:14px;padding:3px 10px;font:inherit;font-size:12px}
+  /* 清單：表格改卡片 */
+  #v-list .tbl{max-height:none;overflow:visible;border:0;border-radius:0}
+  #v-list table,#v-list tbody{display:block}
+  #v-list thead{display:none}
+  #v-list tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  #v-list tbody td{display:block;border:0;padding:0;font-size:12px;color:var(--mute)}
+  #v-list tbody td:empty{display:none}
+  #v-list tbody td:nth-child(1){order:1;font-weight:700;color:var(--ink);font-size:13px}
+  #v-list tbody td:nth-child(2){order:2;background:var(--pri2);color:var(--pri);border-radius:6px;padding:0 7px}
+  #v-list tbody td:nth-child(7){order:3;margin-left:auto}
+  #v-list tbody td:nth-child(4){order:4;flex-basis:100%;font-size:15px;font-weight:600;color:var(--ink);line-height:1.35;margin:4px 0 2px}
+  #v-list tbody td:nth-child(3){order:5}
+  #v-list tbody td:nth-child(5){order:6}
+  #v-list tbody td:nth-child(5)::before{content:"委員 "}
+  #v-list tbody td:nth-child(6){order:7}
+  #v-list tbody td:nth-child(6)::before{content:"領隊 "}
+  #v-list tbody td:nth-child(8){order:8}
+  #v-list tbody td:nth-child(8)::before{content:"紀錄表期限 "}
+  #v-list tbody td:nth-child(9){order:9}
+  #v-list tbody td:nth-child(9)::before{content:"報部改善期限 "}
+  #v-list tbody td:nth-child(10){order:10;text-align:left!important}
+  #v-list tbody td:nth-child(10)::before{content:"檢驗拆驗 "}
+  #v-list tbody td:nth-child(11),#v-list tbody td:nth-child(12){order:11}
+  #v-list tbody td[colspan]{flex-basis:100%;text-align:center}
+  /* 統計等大表格：左右滑動時固定第一欄 */
+  .ix .tbl table.st td:first-child,.ix .tbl table.st th:first-child{position:sticky;left:0;background:#fff;z-index:1}
+  .ix .tbl table.st thead th:first-child{z-index:3}
+}
 </style>
 </head>
 <body>
@@ -3731,6 +3806,103 @@ $('btnReview').onclick = async () => {
 };
 
 boot();
+</script>
+
+<script>
+/* ===================== 手機版（640px 以下）：底部分頁列、「更多」面板、清單篩選面板 ===================== */
+(() => {
+  const MQ = matchMedia('(max-width: 640px)');
+  const ICON = {"list": "<path d=\"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01\"/>", "cal": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/>", "due": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>", "rec": "<path d=\"M9 3h6l1 2h3v16H5V5h3z\"/><path d=\"M9 12l2 2 4-4\"/>", "stat": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-4 3 3 5-6\"/>", "goal": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/>", "month": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><path d=\"M8 8h8M8 12h8M8 16h5\"/>", "sug": "<path d=\"M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.5-.8z\"/>", "admin": "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1\"/>", "more": "<circle cx=\"5\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"19\" cy=\"12\" r=\"1\"/>", "out": "<path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9\"/>"};
+  const svg = k => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICON[k] || '') + '</svg>';
+  const MAIN = ['list', 'cal', 'due', 'rec'];                       // 底部分頁列固定顯示
+  const SHORT = { due: '期限', rec: '紀錄', month: '月統計表', sug: '代碼建議' };
+  const nav = $('nav');
+  // 分頁按鈕加圖示與短名稱（電腦版以 CSS 隱藏圖示）
+  [...nav.querySelectorAll('button[data-v]')].forEach(b => {
+    b.insertAdjacentHTML('afterbegin', '<span class="mi">' + svg(b.dataset.v) + '</span>');
+    if (SHORT[b.dataset.v]) b.dataset.s = SHORT[b.dataset.v];
+    if (MAIN.indexOf(b.dataset.v) < 0) b.classList.add('mmore');
+  });
+  // 「更多」按鈕（自行處理點擊，不交給分頁切換）
+  const more = document.createElement('button');
+  more.id = 'mobMoreBtn'; more.type = 'button';
+  more.innerHTML = '<span class="mi">' + svg('more') + '</span>更多';
+  more.addEventListener('click', e => { e.stopPropagation(); openMore(); });
+  nav.appendChild(more);
+  // 「更多」面板
+  document.body.insertAdjacentHTML('beforeend',
+    '<dialog id="mobMore" class="msheet" closedby="any" aria-labelledby="mobMoreT"><div class="mh"></div><div class="mb"><h3 id="mobMoreT">更多功能</h3><div class="mgrid" id="mobMoreGrid"></div><div class="mme" id="mobMe"></div></div></dialog>' +
+    '<dialog id="mobFilter" class="msheet" closedby="any" aria-labelledby="mobFilterT"><div class="mh"></div><div class="mb"><h3 id="mobFilterT">篩選</h3><div class="mf" id="mobFilterBox"></div>' +
+    '<div class="mbtns"><button type="button" class="b" id="mobFClr">清除</button><button type="button" class="b p" id="mobFOk">套用</button></div>' +
+    '<div class="mbtns" id="mobFDl"></div></div></dialog>');
+  function openMore() {
+    const items = [...nav.querySelectorAll('button.mmore')].filter(b => !b.classList.contains('hide'));
+    $('mobMoreGrid').innerHTML = items.map(b => '<button type="button" data-mv="' + b.dataset.v + '"' + (b.dataset.v === S.view ? ' class="on"' : '') + '>' + svg(b.dataset.v) +
+      esc(b.dataset.s || b.textContent.trim().replace(/\s*實驗$/, '')) + '</button>').join('') +
+      (window.DK && DK.logout ? '<button type="button" data-out="1">' + svg('out') + '登出</button>' : '');
+    $('mobMe').textContent = $('me').textContent ? '目前帳號：' + $('me').textContent : '';
+    $('mobMore').showModal();
+  }
+  $('mobMoreGrid').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('mobMore').close();
+    if (b.dataset.out) { window.DK.logout(); return; }
+    nav.querySelector('button[data-v="' + b.dataset.mv + '"]').click();
+  });
+  // 目前在「更多」裡的分頁時，底部「更多」顯示為選取
+  const syncMore = () => { const v = !!nav.querySelector("button.mmore.on"); if (more.classList.contains("on") !== v) more.classList.toggle("on", v); };
+  new MutationObserver(syncMore).observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  syncMore();
+
+  /* 清單：篩選面板（手機開啟時把原本的選單搬進面板，關閉後搬回，篩選邏輯不變） */
+  const SEL = [['fMonth', '月份'], ['fType', '項目'], ['fUnit', '單位'], ['fStatus', '狀態']];
+  const row = $('fKey').closest('.row');
+  const fb = document.createElement('button');
+  fb.id = 'mobFilterBtn'; fb.type = 'button'; fb.className = 'b';
+  row.insertBefore(fb, $('listCnt'));
+  const chips = document.createElement('div'); chips.id = 'mobChips'; row.appendChild(chips);
+  const homes = {};
+  fb.onclick = () => {
+    if ($('mobFilter').open) return;
+    const box = $('mobFilterBox'); box.querySelectorAll('label').forEach(l => l.remove());   // 只清標籤，選單本身是搬進來的元素
+    SEL.forEach(([id, l]) => {
+      const s = $(id); homes[id] = homes[id] || document.createComment(id);
+      if (!homes[id].parentNode) s.before(homes[id]);
+      const lb = document.createElement('label'); lb.textContent = l; lb.htmlFor = id;
+      box.append(lb, s);
+    });
+    homes.dl = homes.dl || document.createComment('dl');
+    if (!homes.dl.parentNode) $('btnCsv').before(homes.dl);
+    $('mobFDl').append($('btnCsv'), $('btnXlsx'));
+    $('mobFilter').showModal();
+  };
+  $('mobFilter').addEventListener('close', () => {
+    SEL.forEach(([id]) => { if (homes[id] && homes[id].parentNode) homes[id].replaceWith($(id)); });
+    if (homes.dl && homes.dl.parentNode) homes.dl.replaceWith($('btnCsv'), $('btnXlsx'));
+    syncChips();
+  });
+  $('mobFOk').onclick = () => $('mobFilter').close();
+  $('mobFClr').onclick = () => { SEL.forEach(([id]) => { $(id).value = ''; }); renderList(); };
+  function syncChips() {
+    const on = SEL.filter(([id]) => $(id).value);
+    fb.textContent = '篩選' + (on.length ? ' ' + on.length : '');
+    chips.innerHTML = on.map(([id]) => '<button type="button" data-clr="' + id + '">' + esc($(id).selectedOptions[0].textContent) + ' ✕</button>').join('');
+  }
+  chips.addEventListener('click', e => { const b = e.target.closest('[data-clr]'); if (!b) return; $(b.dataset.clr).value = ''; renderList(); syncChips(); });
+  SEL.forEach(([id]) => $(id).addEventListener('change', syncChips));
+  syncChips();
+  // 不支援 closedby 的瀏覽器：點面板外面也能關閉
+  if (!('closedBy' in HTMLDialogElement.prototype)) {
+    const outside = (e, d) => { const r = d.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+    document.querySelectorAll('dialog.msheet').forEach(d => {
+      let down = false;
+      d.addEventListener('pointerdown', e => { down = outside(e, d); });
+      d.addEventListener('pointerup', e => { if (down && outside(e, d)) d.close(); });
+    });
+  }
+  // 從手機轉成寬螢幕時關閉面板（選單自動搬回原位）
+  MQ.addEventListener('change', () => { if (!MQ.matches) document.querySelectorAll('dialog.msheet[open]').forEach(d => d.close()); });
+})();
 </script>
 </body>
 </html>
