@@ -412,6 +412,13 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
   #v-list tbody td:nth-child(10)::before{content:"檢驗拆驗 "}
   #v-list tbody td:nth-child(11),#v-list tbody td:nth-child(12){order:11}
   #v-list tbody td[colspan]{flex-basis:100%;text-align:center}
+  /* 統計、年度目標等卡片標題列：標題獨占一行，年度勾選與按鈕換到下一行 */
+  .stgrid h3{flex-wrap:wrap;row-gap:8px}
+  .stgrid h3 .sp{flex-basis:100%;height:0}
+  .yrs{display:inline-flex;flex-wrap:wrap;gap:4px 12px}
+  .yrs label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-right:0}
+  #v-goal h3 .yrs{flex-basis:calc(100% - 3em)}
+  .stf{row-gap:8px}
   /* 統計等大表格：左右滑動時固定第一欄 */
   .ix .tbl table.st td:first-child,.ix .tbl table.st th:first-child{position:sticky;left:0;background:#fff;z-index:1}
   .ix .tbl table.st thead th:first-child{z-index:3}
