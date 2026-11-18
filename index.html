@@ -43,6 +43,8 @@
 (function () {
   const CFG = window.DK_CONFIG;
   const TK = 'dk_tok';
+  const SK = 'dk_sess';   // 系統通行證（後台換發，7 天；存 localStorage，新分頁也能沿用）
+  let sessBusy = false;
   let waiters = [];
   let gisReady = false;
 
@@ -50,7 +52,13 @@
     try { return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))))); }
     catch (e) { return null; }
   };
+  function sess() {
+    try { const o = JSON.parse(localStorage.getItem(SK) || 'null'); if (o && o.t && o.exp > Date.now() + 120000) return o; } catch (e) { }
+    return null;
+  }
   function current() {
+    const s = sess();
+    if (s) return { sess: s.t, email: s.email, name: s.name || '' };
     try {
       const t = sessionStorage.getItem(TK); if (!t) return null;
       const p = decode(t); if (!p || p.exp * 1000 < Date.now() + 120000) return null;   // 剩不到 2 分鐘就視為過期
@@ -69,6 +77,7 @@
       sessionStorage.setItem(TK, resp.credential);
     } catch (e) { }
     hideLogin();
+    getSess(resp.credential, p);
     const w = waiters; waiters = [];
     w.forEach(f => f());
   }
@@ -83,27 +92,38 @@
     }
   }
   function hideLogin() { const ov = document.getElementById('dkLogin'); if (ov) ov.classList.add('dk-hide'); }
-  /** 取得有效的身分證明；沒有就顯示登入畫面並等待 */
+  /** 用 Google 身分權杖向後台換系統通行證（失敗就繼續用身分權杖，1 小時後再登入） */
+  async function getSess(idTok, p) {
+    if (sessBusy) return; sessBusy = true;
+    try {
+      const res = await fetch(CFG.backUrl, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ idToken: idTok, action: 'session', args: {} }) });
+      const r = await res.json();
+      if (r.ok && r.data && r.data.sess) localStorage.setItem(SK, JSON.stringify({ t: r.data.sess, exp: r.data.exp, email: p.email, name: p.name || '' }));
+    } catch (e) { } finally { sessBusy = false; }
+  }
+  /** 取得有效的身分證明（通行證或 Google 身分權杖）；沒有就顯示登入畫面並等待 */
   function token() {
     const c = current();
-    if (c) return Promise.resolve(c.token);
+    if (c) return Promise.resolve(c);
     return new Promise(res => {
-      waiters.push(() => res(current().token));
+      waiters.push(() => res(current()));
       showLogin('登入逾時或尚未登入，請以 Google 帳號登入');
     });
   }
   /** 呼叫後台 API（失效的身分證明會自動要求重新登入再試一次） */
   async function call(action, args, retried) {
-    const t = await token();
+    const c = await token();
+    if (!c.sess && c.token) getSess(c.token, c);   // 舊登入（只有身分權杖）順便換通行證
     const res = await fetch(CFG.backUrl, {
       method: 'POST', redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // 簡單請求，避免跨網域預檢
-      body: JSON.stringify({ idToken: t, action: action, args: args || {} })
+      body: JSON.stringify(Object.assign(c.sess ? { sess: c.sess } : { idToken: c.token }, { action: action, args: args || {} }))
     });
     let r;
     try { r = await res.json(); } catch (e) { throw new Error('後台回應異常（HTTP ' + res.status + '），請稍後再試'); }
     if (!r.ok) {
-      if (r.auth && !retried && /權杖|過期|驗證/.test(r.error || '')) { sessionStorage.removeItem(TK); return call(action, args, true); }
+      if (r.auth && !retried && /權杖|過期|驗證|通行證/.test(r.error || '')) { try { sessionStorage.removeItem(TK); localStorage.removeItem(SK); } catch (e) { } return call(action, args, true); }
       if (r.auth && /尚未開通/.test(r.error || '')) showLogin(r.error);
       throw new Error(r.error || '後台錯誤');
     }
@@ -137,7 +157,7 @@
   /* 登出：清除身分證明與本機暫存 */
   window.DK = {
     logout() {
-      try { sessionStorage.removeItem(TK); } catch (e) { }
+      try { sessionStorage.removeItem(TK); localStorage.removeItem(SK); } catch (e) { }
       clearLocal();
       try { localStorage.removeItem('dk_user'); } catch (e) { }
       if (gisReady) google.accounts.id.disableAutoSelect();
