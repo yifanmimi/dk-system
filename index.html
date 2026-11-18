@@ -1220,7 +1220,7 @@ function parseRecord(lines){
 }
 /** 段落切條：有編號（1. 2.）時依編號合併跨行；沒有編號則每段一條；略過「● 監造單位：」「建議：」等小標與「無」
  *  「4.3.5」這類單獨成行的缺失代碼不是編號，接回上一條；（2）（3）小項接在（1）之後成同一條 */
-const CODE_LINE=/^[(（【\[]?\s*\d\s*\.\s*\d{1,2}(?:\s*\.\s*\d{1,2}){0,3}\s*[)）】\]]?\s*(?:[【\[〔(（]\s*[LMSH]\s*[】\]〕)）])?\s*(?:[\[［]\s*-\s*\d+(?:\.\d+)?\s*[\]］])?[\s。．.–—-]*$/;
+const CODE_LINE=/^[(（【\[]?\s*\d\s*\.\s*\d{1,2}(?:\s*\.\s*\d{1,2}){0,4}\s*[)）】\]]?\s*(?:[【\[〔(（]\s*[LMSH]\s*[】\]〕)）])?\s*(?:[\[［]\s*-\s*\d+(?:\.\d+)?\s*[\]］])?[\s。．.–—-]*$/;
 function splitItems(lines){
   const ls=lines.map(s=>s.trim()).filter(s=>s && !/^[●○◎■◆]/.test(s) && !/^(建議|意見)[：:]?$/.test(s) && !/^[(（]?無[)）]?。?$/.test(s));
   const NUMRE=/^\s*(\d{1,2})\s*[.、．)）](?!\s*\d)\s*/;
@@ -1244,13 +1244,13 @@ function splitDefect(t){
   let s=String(t||'').trim().replace(/[\s。]*[–—]+\s*$/,''), code='', level='', points='';
   const pm=s.match(/扣\s*(\d+(?:\.\d+)?)\s*點/)||s.match(/[\[［]\s*-\s*(\d+(?:\.\d+)?)\s*[\]］]\s*[。]?\s*$/); if(pm) points=pm[1];
   s=s.replace(/\s*[\[［]\s*-\s*\d+(?:\.\d+)?\s*[\]］]\s*[。]?\s*$/,'');
-  const CODE_RE=/(?<![\d.])(\d)\s*\.\s*(\d{1,2})(?:\s*\.\s*(\d{1,2}))?(?:\s*\.\s*(\d{1,2}))?(?![\d.]*\d)/g;
+  const CODE_RE=/(?<![\d.])(\d)\s*\.\s*(\d{1,2})(?:\s*\.\s*(\d{1,2}))?(?:\s*\.\s*(\d{1,2}))?(?:\s*\.\s*(\d{1,2}))?(?![\d.]*\d)/g;
   // 只取結尾附近的代碼（避免把日期 108.11.27 之類當代碼）
   const tail=s.slice(-40); const codes=[...tail.matchAll(CODE_RE)].filter(m=>m[3]!=null);   // 至少三段（x.xx.xx）才算代碼
-  if(codes.length){ const m=codes[codes.length-1]; code=[m[1]].concat([m[2],m[3],m[4]].filter(x=>x!=null).map(x=>x.padStart(2,'0'))).join('.'); }
+  if(codes.length){ const m=codes[codes.length-1]; code=[m[1]].concat([m[2],m[3],m[4],m[5]].filter(x=>x!=null).map(x=>x.padStart(2,'0'))).join('.'); }
   const lm=s.match(/[【\[(（〔]\s*([LMSH])\s*[】\])）〕]/)||s.match(/\d\s*([LMS])\s*[。]?\s*$/); if(lm) level=lm[1];
   s=s.replace(/\s*[(（]?\s*扣\s*\d+(?:\.\d+)?\s*點\s*[)）]?\s*/g,'');
-  for(let k=0;k<4;k++) s=s.replace(/\s*(?:[【\[(（〔]\s*[LMSH]\s*[】\])）〕]|[LMS](?=\s*[。.]?\s*$)|[(（【]?\d\s*\.\s*\d{1,2}(?:\s*\.\s*\d{1,2}){1,3}[)）】]?)\s*[。.]?\s*$/,'');
+  for(let k=0;k<4;k++) s=s.replace(/\s*(?:[【\[(（〔]\s*[LMSH]\s*[】\])）〕]|[LMS](?=\s*[。.]?\s*$)|[(（【]?\d\s*\.\s*\d{1,2}(?:\s*\.\s*\d{1,2}){1,4}[)）】]?)\s*[。.]?\s*$/,'');
   s=s.trim(); if(s && !/[。！？]$/.test(s)) s+='。';
   if(!level && code) level='L';
   if(!points && level==='L') points='0';
