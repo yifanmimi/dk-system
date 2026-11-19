@@ -268,6 +268,8 @@ button:disabled{opacity:.5;cursor:default}
 .dlg header h3{margin:0;font-size:16px}
 .dlg .bd{padding:16px 18px}
 .dlg footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+/* 視窗內容很長時（手機），儲存等按鈕固定在畫面底部，不必滑到最下面 */
+.dlg footer{position:sticky;bottom:0;z-index:2;background:#fff;border-radius:0 0 10px 10px;box-shadow:0 -4px 10px rgba(0,0,0,.06)}
 .fg{display:grid;grid-template-columns:110px 1fr 110px 1fr;gap:10px 12px;align-items:center}
 .fg label{color:var(--mute);font-size:13px;text-align:right}
 .fg .full{grid-column:2/5}
@@ -667,7 +669,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
     <div class="card" id="sgOut" style="margin-bottom:12px;overflow-x:auto"></div>
     <div class="card" id="sgFbCard" style="margin-bottom:12px">
       <div class="row"><h3 style="margin:0">回饋統計</h3><span class="cnt">（依您與其他使用者送出的回饋；用來評估模型實際表現）</span><span class="sp"></span><button class="b" id="sgFbReload">重新整理</button></div>
-      <div id="sgFbStat" class="cnt" style="margin-top:8px">尚未讀取</div>
+      <div id="sgFbStat" class="cnt" style="margin-top:8px;overflow-x:auto" tabindex="0" role="region" aria-label="回饋統計表">尚未讀取</div>
     </div>
     <div class="card hide" id="sgAdmin">
       <h3 style="margin:0 0 6px">更新模型（系統維護）</h3>
@@ -756,6 +758,31 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
 #v-rec .items .w-del{width:2.8em}
 #v-rec .items tr.flag td{background:#fffaf0}
 #v-rec .codehint{font-size:11.5px;color:var(--muted);margin-top:2px}
+/* 手機：缺點表改成每筆一張卡片（第一行缺失內容占滿寬度，第二行代碼／等級／扣點／刪除），
+   輸入框 16px 字避免 iPhone 自動放大，可點範圍至少 44px */
+@media (max-width:640px){
+  #v-rec .items thead{display:none}
+  #v-rec .items,#v-rec .items tbody{display:block}
+  #v-rec .items tr[data-i]{display:grid;grid-template-columns:minmax(0,1fr) 4.4em 4.2em 44px;grid-template-areas:"no no no no" "text text text text" "code lv pt del";gap:6px;padding:10px 0;border-top:1px solid var(--line)}
+  #v-rec .items tr[data-i] td{border:0;padding:0;display:block}
+  #v-rec .items .c-no{grid-area:no;font-size:12.5px;font-weight:600;color:var(--muted)}
+  #v-rec .items .c-no::before{content:"第 "}
+  #v-rec .items .c-no::after{content:" 筆"}
+  #v-rec .items .c-text{grid-area:text}
+  #v-rec .items .c-code{grid-area:code}
+  #v-rec .items .c-lv{grid-area:lv}
+  #v-rec .items .c-pt{grid-area:pt}
+  #v-rec .items .c-del{grid-area:del;align-self:start}
+  #v-rec .items .c-code::before,#v-rec .items .c-lv::before,#v-rec .items .c-pt::before{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
+  #v-rec .items .c-code::before{content:"缺失代碼"}
+  #v-rec .items .c-lv::before{content:"等級"}
+  #v-rec .items .c-pt::before{content:"扣點"}
+  #v-rec .items .c-del::before{content:"\00a0";display:block;font-size:12px;margin-bottom:2px}
+  #v-rec .items td textarea,#v-rec .items td input,#v-rec .items td select{font-size:16px;min-height:44px;width:100%}
+  #v-rec .items td textarea{min-height:72px}
+  #v-rec .items .c-del button{width:44px;height:44px;padding:0}
+  #v-rec .items tr:not([data-i]) td{display:block;border:0}
+}
 #v-rec .checks{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:3px;font-size:13px}
 #v-rec .checks li{padding:4px 10px;border-radius:6px}
 #v-rec .checks li.warn{background:var(--warn-bg);color:var(--warn)}
@@ -1303,10 +1330,10 @@ function renderResult(){
     <div class="sub">缺點<span class="muted" style="font-weight:400">（代碼、等級、扣點可修改；扣點以紀錄表為準）</span>${ro?'':'<button class="mini" id="addBad">＋新增</button>'}</div>
     <table class="items"><thead><tr><th class="w-no">#</th><th>內容</th><th class="w-code">缺失代碼</th><th class="w-lv">等級</th><th class="w-pt">扣點</th>${ro?'':'<th class="w-del"></th>'}</tr></thead><tbody>${
       r.bad.map((d,i)=>{ const hint=d.code?String(S.codes[d.code]||'').replace(/□/g,''):''; const flag=!d.code||!S.codes[d.code];
-        return `<tr class="${flag?'flag':''}" data-i="${i}"><td>${i+1}</td><td><textarea data-f="text" rows="2" ${ro?'disabled':''}>${esc(d.text)}</textarea></td>
-        <td><input data-f="code" value="${esc(d.code)}" list="codeList" ${ro?'disabled':''}><div class="codehint">${d.code?(hint?esc(hint.slice(0,40)):'⚠ 缺失扣點表無此代碼'):'⚠ 未填代碼'}</div></td>
-        <td><select data-f="level" ${ro?'disabled':''}>${['','L','M','S'].map(x=>`<option ${x===d.level?'selected':''}>${x}</option>`).join('')}</select></td>
-        <td><input data-f="points" value="${esc(d.points)}" ${ro?'disabled':''}></td>${ro?'':'<td><button class="mini" data-del="'+i+'" title="刪除">✕</button></td>'}</tr>`; }).join('') || `<tr><td colspan="6" class="muted">沒有缺點</td></tr>`
+        return `<tr class="${flag?'flag':''}" data-i="${i}"><td class="c-no">${i+1}</td><td class="c-text"><textarea data-f="text" rows="2" ${ro?'disabled':''}>${esc(d.text)}</textarea></td>
+        <td class="c-code"><input data-f="code" value="${esc(d.code)}" list="codeList" ${ro?'disabled':''}><div class="codehint">${d.code?(hint?esc(hint.slice(0,40)):'⚠ 缺失扣點表無此代碼'):'⚠ 未填代碼'}</div></td>
+        <td class="c-lv"><select data-f="level" ${ro?'disabled':''}>${['','L','M','S'].map(x=>`<option ${x===d.level?'selected':''}>${x}</option>`).join('')}</select></td>
+        <td class="c-pt"><input data-f="points" value="${esc(d.points)}" inputmode="decimal" ${ro?'disabled':''}></td>${ro?'':'<td class="c-del"><button class="mini" data-del="'+i+'" title="刪除" aria-label="刪除第 '+(i+1)+' 筆缺點">✕</button></td>'}</tr>`; }).join('') || `<tr><td colspan="6" class="muted">沒有缺點</td></tr>`
     }</tbody></table>
     ${lst('design','規劃設計問題及建議')}
     ${lst('other','其他建議')}
