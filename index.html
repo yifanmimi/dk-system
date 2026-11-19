@@ -463,7 +463,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
     <button data-v="list" class="on" data-p="行程檢視">清單</button>
     <button data-v="cal" data-p="行程檢視">月曆</button>
     <button data-v="due" data-p="行程檢視">期限提醒</button>
-    <button data-v="rec" data-p="督導紀錄編輯">督導紀錄</button>
+    <button data-v="rec" data-p="督導紀錄編輯">督導查核紀錄</button>
     <button data-v="stat" data-p="統計">統計</button>
     <button data-v="goal" data-p="年度目標">年度目標</button>
     <button data-v="month" data-p="督導月統計表">督導月統計表</button>
@@ -832,7 +832,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
   <!-- 右：結果、比對 -->
   <div class="col right">
     <section class="card">
-      <h2><span class="step">3</span>督導結果（由紀錄表解析，可修改）<span class="sp"></span><span class="muted" id="kindTag"></span></h2>
+      <h2><span class="step">3</span>督導查核結果（由紀錄表解析，可修改）<span class="sp"></span><span class="muted" id="kindTag"></span></h2>
       <div id="resultBox"><div class="empty-hint">選擇案件並上傳紀錄表後，這裡會顯示分數、缺失與委員意見。</div></div>
     </section>
     <section class="card">
@@ -1595,7 +1595,7 @@ if(!window.REC_EMBED) recStart();
         <textarea id="voidReason" placeholder="請填寫作廢原因（必填），例如：與 115-0042 重複登錄"></textarea>
         <div class="row" style="margin-top:6px"><button class="b d" id="btnVoidGo">確定作廢</button><button class="b" id="btnVoidBack">返回</button></div>
       </div>
-      <details id="resBox" class="hide"><summary id="resSum">督導結果</summary><div class="log" id="resList" style="max-height:260px">讀取中…</div></details>
+      <details id="resBox" class="hide"><summary id="resSum">督導查核結果</summary><div class="log" id="resList" style="max-height:260px">讀取中…</div></details>
       <details id="impBox" class="hide"><summary id="impSum">改善檔案</summary>
         <div class="log" id="impList" style="max-height:220px">讀取中…</div>
         <div id="impUp" class="impup">
@@ -1611,7 +1611,7 @@ if(!window.REC_EMBED) recStart();
       <button class="b p" id="btnSave">儲存</button>
       <button class="b p hide" id="btnForce">仍要儲存</button>
       <button class="b hide" id="btnRecFile" title="線上開啟上傳的督導／查核紀錄表原檔">紀錄檔案</button>
-      <button class="b hide" id="btnRecord" title="到督導紀錄頁上傳紀錄表、修改成績與缺失">修改紀錄</button>
+      <button class="b hide" id="btnRecord" title="到督導查核紀錄頁上傳紀錄表、修改成績與缺失">修改紀錄</button>
       <button class="b hide" id="btnOpenImp" title="檢視、上傳機關回復的改善檔案">改善檔案</button>
       <button class="b d hide" id="btnCancel">取消行程…</button>
       <button class="b d hide" id="btnVoid">作廢（登錄錯誤）…</button>
@@ -1638,11 +1638,14 @@ const has = p => !!(S.me && (S.me.perms || []).indexOf(p) >= 0);
 const canEdit = () => has('行程編輯');
 const PERM_GROUPS = [
   ['行程（清單／月曆／期限提醒）', [['行程檢視', '檢視；線上開啟改善檔案'], ['行程編輯', '新增、修改、取消、還原；上傳／刪除改善檔案'], ['行程作廢', '作廢及檢視已作廢']]],
-  ['督導紀錄', [['督導紀錄檢視', '在清單的行程中查看督導結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導紀錄分頁：登錄結果、上傳紀錄表、紀錄表轉檔、批次匯入（含暫存區）']]],
+  ['督導查核紀錄', [['督導紀錄檢視', '在清單的行程中查看督導查核結果；線上開啟紀錄表原檔'], ['督導紀錄編輯', '督導查核紀錄分頁：登錄結果、上傳紀錄表、紀錄表轉檔、批次匯入（含暫存區）']]],
   ['統計', [['統計', '統計分頁；缺失彙整與統計一覽表下載 Excel、存到雲端硬碟'], ['年度目標', '年度目標頁：各年度督導、代部查核件數與目標達成率（檢視、下載）'], ['委員統計', '委員統計表與委員出席明細'], ['督導月統計表', '督導月統計表選單（檢視、下載 Excel）'], ['統計設定', '修改年度目標件數、計畫起始日與月統計表手填欄位']]],
   ['管理', [['帳號管理', '帳號與權限、各帳號操作紀錄（儲存帳號時自動更新檔案資料夾共用）'], ['系統維護', '日曆同步、國定假日、搬遷待確認清單、標案清單上傳、改善檔案自動匯入與待對應處理、資料庫備份、代碼建議模型更新']]],
   ['實驗功能', [['代碼建議（實驗）', '代碼建議分頁：依缺失紀錄文字建議缺失代碼、送出回饋、查看回饋統計（不寫入正式資料；管理者預設不含，需個別勾選）']]]
 ];
+/** 權限顯示名稱：後台存的權限代碼不改（避免既有帳號失效），畫面上改用新名稱 */
+const PERM_LABEL = { '督導紀錄檢視': '督導查核紀錄檢視', '督導紀錄編輯': '督導查核紀錄編輯' };
+const permName = p => PERM_LABEL[p] || p;
 /** 依權限顯示分頁；目前分頁不能用時切到第一個可用的分頁 */
 function applyPerms() {
   [...$('nav').querySelectorAll('button')].forEach(b => b.classList.toggle('hide', !b.dataset.p.split(',').some(has)));
@@ -3292,7 +3295,7 @@ function openCase(id, date) {
   $('logBox').classList.toggle('hide', !c); $('logBox').open = false; $('logList').textContent = '讀取中…';
   const hasRes = has('督導紀錄檢視') && !!(c && ((c.成績 !== '' && c.成績 != null) || +c.缺失數 > 0));
   $('resBox').classList.toggle('hide', !hasRes); $('resBox').open = false; $('resList').textContent = '讀取中…';
-  if (hasRes) { $('resSum').textContent = '督導結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績 + ' ' + gradeOf(c.成績)) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
+  if (hasRes) { $('resSum').textContent = '督導查核結果（成績 ' + (c.成績 === '' || c.成績 == null ? '—' : c.成績 + ' ' + gradeOf(c.成績)) + '，缺失 ' + (c.缺失數 || 0) + ' 筆）'; loadRes(c.案件編號); }
   renderInfo(c, ro);
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
@@ -3679,10 +3682,10 @@ function loadRes(id) {
 }
 function showRes(r) {
   $('resList').innerHTML =
-    '<div>成績：<b>' + esc(r.成績 || '—') + (r.成績 ? ' ' + gradeOf(r.成績) : '') + '</b>' + (!has('督導紀錄編輯') ? '' : '　' + (r.content ? '完整督導紀錄：已儲存（' + esc(R(r.savedAt)) + '　' + esc(r.savedBy) + '）' : '完整督導紀錄：未儲存（只有缺失資料）')) + '</div>' +
+    '<div>成績：<b>' + esc(r.成績 || '—') + (r.成績 ? ' ' + gradeOf(r.成績) : '') + '</b>' + (!has('督導紀錄編輯') ? '' : '　' + (r.content ? '完整督導查核紀錄：已儲存（' + esc(R(r.savedAt)) + '　' + esc(r.savedBy) + '）' : '完整督導查核紀錄：未儲存（只有缺失資料）')) + '</div>' +
     (r.defects.length ? r.defects.map((d, i) => '<div>' + (i + 1) + '. ' + esc(d.缺失紀錄) + (d.委員 ? ' <span class="cnt">（' + esc(d.委員) + '）</span>' : '') + '</div>').join('') : '<div class="cnt">尚無缺失資料</div>') +
     ((r.files || []).length ? '<div style="margin-top:6px">紀錄表原檔：' + r.files.map(f => '<button class="b" data-fid="' + esc(f.檔案ID) + '" data-fn="' + esc(f.檔名) + '" style="padding:1px 8px;font-size:12px;margin:2px">📎 ' + esc(f.檔名) + '</button>').join('') + '</div>' : '') +
-    (has('督導紀錄編輯') ? '<div class="cnt">按下方「督導紀錄 →」可上傳紀錄表、查閱或修改結果。</div>' : '');
+    (has('督導紀錄編輯') ? '<div class="cnt">按下方「修改紀錄」可上傳紀錄表、查閱或修改結果。</div>' : '');
 }
 /* 下載已上傳的紀錄表原檔 */
 $('resList').addEventListener('click', e => { const b = e.target.closest('[data-fid]'); if (b) viewFile(b); });
@@ -3806,7 +3809,7 @@ $('impPend').addEventListener('click', async e => {
 });
 /* 權限勾選區：依群組列出每項功能 */
 $('uPerms').innerHTML = PERM_GROUPS.map(g => '<fieldset><legend>' + g[0] + '</legend>' +
-  g[1].map(p => '<label title="' + p[1] + '"><input type="checkbox" value="' + p[0] + '"> ' + p[0] + '<span class="cnt">（' + p[1] + '）</span></label>').join('') + '</fieldset>').join('');
+  g[1].map(p => '<label title="' + p[1] + '"><input type="checkbox" value="' + p[0] + '"> ' + permName(p[0]) + '<span class="cnt">（' + p[1] + '）</span></label>').join('') + '</fieldset>').join('');
 const permBoxes = () => [...$('uPerms').querySelectorAll('input')];
 function setPerms(list) { permBoxes().forEach(b => { b.checked = list.indexOf(b.value) >= 0; }); }
 // 勾「編輯」自動勾「檢視」；取消「檢視」自動取消同組的編輯
@@ -3825,7 +3828,7 @@ function drawUsers(d) {
   $('userBody').innerHTML = d.users.map((u, i) => {
     const on = u.啟用 === true || u.啟用 === 'true', own = String(u.Email).toLowerCase() === d.owner;
     return '<tr data-i="' + i + '" style="cursor:pointer' + (on ? '' : ';color:var(--mute)') + '"><td>' + esc(u.Email) + (own ? ' <span class="badge">擁有者</span>' : '') + '</td><td>' + esc(u.姓名) + '</td><td>' + (on ? '✔' : '停用') + '</td><td>' +
-      (own ? '全部' : (u.權限 || []).map(p => '<span class="badge">' + esc(p) + '</span>').join(' ')) + '</td></tr>';
+      (own ? '全部' : (u.權限 || []).map(p => '<span class="badge">' + esc(permName(p)) + '</span>').join(' ')) + '</td></tr>';
   }).join('');
 }
 $('userBody').addEventListener('click', e => {
