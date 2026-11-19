@@ -1217,7 +1217,7 @@ function parseRecord(lines){
   const st=J('score'), sm=st.match(/(\d{2,3}(?:\.\d+)?)/);
   rec.score = /不計分/.test(st) ? '不計分' : sm ? sm[1] : '';
   rec.good = splitItems(sec.good||[]);
-  rec.bad = splitItems(sec.bad||[]).map(splitDefect);
+  rec.bad = mergeSameCode(splitItems(sec.bad||[]).map(splitDefect));
   rec.design = splitItems(sec.design||[]);
   rec.other = splitItems(sec.other||[]);
   rec.quality = J('quality');
@@ -1251,6 +1251,21 @@ function splitItems(lines){
     inSub=!!sm && !splitDefect(s).code;
   });
   return out.map(s=>s.trim()).filter(Boolean);
+}
+/** 同一案件缺失代碼不重複：同代碼的意見合併成一筆（文字以「；」串接，等級取較高者，扣點相加）
+ *  例：兩位委員各寫一條 5.03.03 → 合併為一條。沒有代碼的不合併 */
+function mergeSameCode(list){
+  const RANK={'':0,L:1,M:2,S:3,H:4}, out=[], by={};
+  (list||[]).forEach(d=>{
+    const code=String(d.code||'').trim();
+    if(!code || !by[code]){ const x={...d}; out.push(x); if(code) by[code]=x; return; }
+    const a=by[code];
+    a.text=String(a.text||'').replace(/[。；\s]+$/,'')+'；'+String(d.text||'').trim();
+    if((RANK[d.level]||0)>(RANK[a.level]||0)) a.level=d.level;
+    const pa=parseFloat(a.points), pd=parseFloat(d.points);
+    if(!isNaN(pd)) a.points=String((isNaN(pa)?0:pa)+pd);
+  });
+  return out;
 }
 /** 缺點：拆出代碼、等級、扣點（支援「…。【L】(4.02.01.06)」「…。4.01.04.01(L)」「…4.2.3.8」「…(4.01.13)[-1]」等寫法；代碼補成 x.xx.xx） */
 function splitDefect(t){
@@ -1376,6 +1391,8 @@ async function save(force){
   if(!S.sel||!S.rec) return;
   const r=S.rec;
   if(!force && !r.score && !confirm('尚未填分數，仍要儲存？')) return;
+  const nb=mergeSameCode(r.bad);
+  if(nb.length<r.bad.length){ if(!confirm('有 '+(r.bad.length-nb.length)+' 筆缺失代碼重複，儲存時會把同代碼的意見合併成一筆，確定？')) return; r.bad=nb; renderResult(); }
   const info={}; (S.cmp||[]).forEach(x=>{ if(x.use && x.upd) info[x.k]=x.rv; });
   const content={ v:2, kind:r.kind, title:r.title||'', score:r.score, good:r.good, bad:r.bad, design:r.design, other:r.other, inspect:r.inspect, quality:r.quality, badTotal:r.badTotal||'', fields:r.fields||{},
     source: S.file ? S.file.name : ((S.saved&&S.saved.content&&S.saved.content.source)||'') };
