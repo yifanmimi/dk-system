@@ -918,7 +918,7 @@ function applyInit(d, stale){
   $('codeList').innerHTML = Object.entries(S.codes).map(([c,t])=>`<option value="${esc(c)}">${esc(String(t).replace(/□/g,'').slice(0,40))}</option>`).join('');
   $('loadedAt').textContent = stale ? '暫存資料，更新中…' : '資料讀取：'+R(d.loadedAt);
   initFilters();
-  if (selId) { const c = S.cases.find(x => x['案件編號'] === selId); if (c) S.sel = c; }
+  if (selId) { const c = S.cases.find(x => x['案件編號'] === selId); if (c) { S.sel = c; renderSelHead(c); } }
   renderCases();
   if (PRE_ID && !preDone) { const c = S.cases.find(x => x['案件編號'] === PRE_ID); if (c) { preDone = true; focusCase(c); } }
   $('rBtnSave').style.display = canEdit() ? '' : 'none';
@@ -992,9 +992,15 @@ function selectCase(id){
   if(S.sel && S.sel['案件編號']!==id && S.file && !confirm('切換案件會清除目前上傳、尚未儲存的紀錄表，確定？')) return;
   if(!S.sel || S.sel['案件編號']!==id){ S.file=null; S.rec=null; S.saved=null; }
   S.sel=c;
-  $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b><br><span class="muted">${esc(c['案件編號'])}｜${esc(R(c['日期'])||'日期未定')}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc([c['委員1'],c['委員2']].filter(Boolean).join('、')||'—')}｜目前：${hasRes(c)?'成績 '+esc(c['成績']||'—')+'、缺失 '+(c['缺失數']||0)+' 項':'尚未登錄'}</span></div>`;
+  renderSelHead(c);
+  // 網址記住目前選的案件，重新整理後自動選回
+  try{ const u=new URL(location.href); u.searchParams.set('id',id); history.replaceState(null,'',u); }catch(e){}
   renderCases(); renderFile(); renderResult(); renderCmp(); updateSave();
   loadSaved(c);
+}
+/** 督導紀錄：上方「目前選取案件」摘要（成績、缺失數隨資料更新） */
+function renderSelHead(c){
+  $('selectedCase').innerHTML = `<div class="selected-case"><b>${esc(c['工程名稱'])}</b><br><span class="muted">${esc(c['案件編號'])}｜${esc(R(c['日期'])||'日期未定')}｜${esc(c['項目'])}｜${esc(c['單位'])}｜委員：${esc([c['委員1'],c['委員2']].filter(Boolean).join('、')||'—')}｜目前：${hasRes(c)?'成績 '+esc(c['成績']||'—')+'、缺失 '+(c['缺失數']||0)+' 項':'尚未登錄'}</span></div>`;
 }
 /* 已儲存的結果與原檔清單；有完整內容則帶回右側供檢視或修改 */
 async function loadSaved(c){
@@ -1752,6 +1758,31 @@ function applyInit(d, stale) {
     else $('selYear').innerHTML = S.years.map(y => '<option value="' + y + '"' + (y === S.year ? ' selected' : '') + '>' + y + ' 年度</option>').join('');
     if (!S.month) { const t = todayStr(); S.month = (String(+t.slice(0, 4) - 1911) === S.year ? t.slice(0, 7) : (+S.year + 1911) + '-01'); }
     render();
+    refreshOpenDlg(stale);
+  }
+}
+/** 案件對話框開著時，背景讀到新資料就同步顯示；重新整理後依網址自動開回原本的案件 */
+function refreshOpenDlg(stale) {
+  const open = !$('dlgMask').classList.contains('hide');
+  if (open && S.editing) {
+    const fresh = S.cases.find(x => x.案件編號 === S.editing.案件編號);
+    if (!fresh || stale) return;
+    if (!S.dlgDirty) {
+      const imp = $('impBox').open, log = $('logBox').open, res = $('resBox').open;
+      openCase(fresh.案件編號);
+      $('impBox').open = imp; $('logBox').open = log; $('resBox').open = res;
+    } else {
+      S.editing = fresh;
+      $('dlgStatus').innerHTML = stBadge(fresh) + (fresh.取消原因 ? ' <span class="cnt">原因：' + esc(fresh.取消原因) + '</span>' : '');
+      if (fresh.狀態 !== '已作廢') impSummary(fresh);
+    }
+    return;
+  }
+  // 重新整理後：網址有 case= 就開回該案件（只做一次）
+  if (!S._caseRestored && !stale) {
+    S._caseRestored = true;
+    const id = new URLSearchParams(location.search).get('case');
+    if (id && S.view !== 'rec' && S.cases.some(x => x.案件編號 === id)) openCase(id);
   }
 }
 
@@ -1978,6 +2009,17 @@ const SUG = (() => {
   }
   return { open: open };
 })();
+/** 把目前畫面寫進網址（?view=分頁&case=開著的案件&id=督導紀錄選的案件），重新整理或分享網址時回到同一畫面 */
+function syncUrl() {
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete('page'); u.searchParams.delete('v');
+    u.searchParams.set('view', S.view);
+    if (S.editing && !$('dlgMask').classList.contains('hide')) u.searchParams.set('case', S.editing.案件編號); else u.searchParams.delete('case');
+    if (S.view !== 'rec') u.searchParams.delete('id');
+    if (u.href !== location.href) history.replaceState(null, '', u);
+  } catch (e) { }
+}
 function setView(v) {
   if (!$('v-' + v)) v = 'list';
   S.view = v;
@@ -1989,6 +2031,7 @@ function setView(v) {
   if (v === 'sug') SUG.open();
   if (v === 'stat' || v === 'goal' || v === 'month') setTimeout(loadStats, 0);
   if (v === 'rec' && !S._recStarted) { S._recStarted = true; REC.start(); }
+  syncUrl();
 }
 ['c日期', 'c報部改善期限', 'stFrom', 'stTo', 'tgStart'].forEach(rocInput);
 const CASE_ID = (new URLSearchParams(location.search).get('id') || '').replace(/[^0-9\-]/g, '');
@@ -3253,9 +3296,12 @@ function openCase(id, date) {
   renderInfo(c, ro);
   updateTenderList(); showTenderInfo(); calcDue();
   $('dlgMask').classList.remove('hide');
+  S.dlgDirty = false; syncUrl();
   if (!c) setTimeout(() => $('c日期').focus(), 50);
 }
-function closeDlg() { $('dlgMask').classList.add('hide'); S.editing = null; }
+// 對話框內有輸入就標記為修改中，背景更新時不覆蓋使用者正在打的內容
+$('dlgMask').addEventListener('input', () => { S.dlgDirty = true; });
+function closeDlg() { $('dlgMask').classList.add('hide'); S.editing = null; syncUrl(); }
 $('btnClose').onclick = closeDlg;
 $('dlgMask').addEventListener('mousedown', e => { if (e.target === $('dlgMask')) closeDlg(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('dlgMask').classList.contains('hide')) closeDlg(); });
