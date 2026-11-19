@@ -1234,7 +1234,13 @@ function splitItems(lines){
   const SUBRE=/^[(（]\s*(\d{1,2})\s*[)）]/;
   const out=[];
   if(ls.some(s=>NUMRE.test(s) && !CODE_LINE.test(s))){
-    ls.forEach(s=>{ if(NUMRE.test(s) && !CODE_LINE.test(s)) out.push(s.replace(NUMRE,'')); else if(out.length) out[out.length-1]+=(CODE_LINE.test(s)?' ':'')+s; else out.push(s); });
+    // 沒編號的行原則上接在上一條後面（同一條跨行）；但上一條已經有代碼、這行本身也有代碼時，是另一條缺失
+    //（例：大部分缺失沒編號、只有幾條殘留「3.」「4.」的紀錄表，不能整段併成一條）
+    ls.forEach(s=>{
+      if(NUMRE.test(s) && !CODE_LINE.test(s)) out.push(s.replace(NUMRE,''));
+      else if(out.length && (CODE_LINE.test(s) || !(splitDefect(out[out.length-1]).code && splitDefect(s).code))) out[out.length-1]+=(CODE_LINE.test(s)?' ':'')+s;
+      else out.push(s);
+    });
     return out.map(s=>s.trim()).filter(Boolean);
   }
   let inSub=false;   // 上一條是尚未出現代碼的（n）小項
