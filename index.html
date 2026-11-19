@@ -240,6 +240,35 @@ button:disabled{opacity:.5;cursor:default}
 .mk.r{background:#e6f4ea;color:#2e7d4f}.mk.i{background:#fdecea;color:#b03a2e}
 .undated{border:1px dashed #c9d0d8;border-radius:6px;padding:6px 8px;margin-bottom:8px;background:#fff;font-size:12px}.undated b{color:var(--warn);margin-right:6px}.undated .grid-chip{display:inline-block;max-width:260px;vertical-align:middle;margin:2px 4px 2px 0}
 .legend{display:flex;gap:10px;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.calopt{white-space:nowrap}
+.calday{display:none}
+/* 手機月曆：格子只顯示色條，點日期在下方列出當天行程 */
+@media (max-width:640px){
+  .calhead{flex-wrap:wrap;gap:6px}
+  .calhead h2{min-width:0;flex:1;margin:0}
+  .calhead .sp{display:none}
+  .calopt{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:20px;background:#fff;font-size:13px}
+  .calopt input{width:18px;height:18px;margin:0}
+  .cell{min-height:58px;padding:2px 3px;cursor:pointer}
+  .cell.can-add:hover{cursor:pointer}
+  .dn{font-size:13px}
+  .cell.sel{outline:2px solid var(--pri);outline-offset:-2px;background:#f2f7fd}
+  .grid .chip{font-size:0;height:6px;padding:0;margin:2px 0;border-radius:3px}
+  .grid .chip.c{height:4px}
+  .cell:not(.open) .chip.x{display:block}
+  .more{display:none}
+  .mk{font-size:10px;padding:0 2px;margin:1px 1px 0 0}
+  .calday{display:block;margin-top:10px;padding-bottom:64px}   /* 底部留空，右下角＋鈕不會蓋住最後一筆 */
+  .calday h3{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .calday .ci{display:block;width:100%;text-align:left;font:inherit;background:#fff;border:1px solid var(--line);border-left:5px solid var(--ty);border-radius:10px;padding:10px 12px;margin-bottom:8px;color:inherit;cursor:pointer}
+  .calday .ci.c{opacity:.6;text-decoration:line-through}
+  .calday .ci b{display:block;font-size:15px;line-height:1.4;margin:2px 0}
+  .calday .ci .m{font-size:12.5px;color:var(--mute)}
+  .calday .dl{font-size:13px;margin:4px 0 8px;padding:8px 10px;border-radius:8px}
+  .calday .dl.r{background:#e6f4ea;color:#2e7d4f}.calday .dl.i{background:#fdecea;color:#b03a2e}
+  .calday .none{color:var(--mute);font-size:13px;padding:6px 0 10px}
+  .calday .add{width:100%;min-height:44px}
+}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 /* 表格 */
 .ix table{border-collapse:collapse;width:100%;background:#fff}
@@ -481,11 +510,12 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
       <button class="b" id="mPrev">‹</button><h2 id="mTitle"></h2><button class="b" id="mNext">›</button>
       <button class="b" id="mToday">本月</button>
       <span class="sp"></span>
-      <label class="cnt"><input type="checkbox" id="chkCancel"> 顯示已取消</label>
-      <label class="cnt"><input type="checkbox" id="chkDue" checked> 顯示期限</label>
+      <label class="cnt calopt"><input type="checkbox" id="chkCancel"> 顯示已取消</label>
+      <label class="cnt calopt"><input type="checkbox" id="chkDue" checked> 顯示期限</label>
     </div>
     <div id="undated" class="undated hide"></div>
     <div class="grid" id="grid"></div>
+    <div id="calDay" class="calday"></div>
     <div class="legend" id="legend" style="margin-top:8px"></div>
   </section>
 
@@ -2169,14 +2199,45 @@ function renderCal() {
     h += '<div class="' + cls.join(' ') + '" data-date="' + ds + '">' + inner + '</div>';
   }
   $('grid').innerHTML = h;
+  // 手機用：選取的日期（換月時預設今天；不在本月則選本月第一個有行程的日子）
+  S._cal = { byDate: byDate, rec: rec, imp: imp };
+  if (!S.calSel || S.calSel.slice(0, 7) !== S.month) {
+    const firstDay = Object.keys(byDate).filter(k => k && k.slice(0, 7) === S.month).sort()[0];
+    S.calSel = today.slice(0, 7) === S.month ? today : (firstDay || S.month + '-01');
+  }
+  renderCalDay();
   // 日期未定：本月預定、或未指定月份者列在月曆上方
   const und = S.cases.filter(c => !c.日期 && c.狀態 !== '已作廢' && (c.狀態 !== '已取消' || showC) && (!c.預定月份 || c.預定月份 === S.month));
   $('undated').classList.toggle('hide', !und.length);
   $('undated').innerHTML = '<b>日期未定</b>' + und.map(c => '<span class="grid-chip"><span class="chip' + (c.狀態 === '已取消' ? ' c' : '') + '" data-id="' + c.案件編號 + '" style="background:' + (TYPE_COLOR[c.項目] || '#888') + '">' +
     esc(c.單位.replace(/管理處$/, '') + '｜' + c.工程名稱) + (c.預定月份 ? '' : '（月份未定）') + '</span></span>').join('');
 }
+/** 手機月曆：列出選取日期的行程與期限（電腦版這塊隱藏） */
+function renderCalDay() {
+  const ds = S.calSel, D = S._cal; if (!ds || !D) return;
+  $('grid').querySelectorAll('.cell').forEach(c => c.classList.toggle('sel', c.dataset.date === ds));
+  const [y, m, d] = ds.split('-').map(Number), wd = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
+  const list = (D.byDate[ds] || []).slice().sort((a, b) => a.單位.localeCompare(b.單位));
+  const units = o => Object.keys(o).map(u => u.replace(/管理處$/, '') + ' ' + o[u] + ' 件').join('、');
+  let h = '<h3>' + (y - 1911) + '/' + m + '/' + d + '（' + wd + '）' + (S.holidays[ds] ? '<span class="cnt">' + esc(S.holidays[ds]) + '</span>' : '') + '</h3>';
+  h += list.map(c => '<button type="button" class="ci' + (c.狀態 === '已取消' ? ' c' : '') + '" data-id="' + c.案件編號 + '" style="--ty:' + (TYPE_COLOR[c.項目] || '#888') + '">' +
+    '<span class="m">' + esc(c.項目) + '｜' + esc(c.單位) + '　' + stBadge(c) + '</span><b>' + esc(c.工程名稱) + '</b>' +
+    '<span class="m">' + esc(c.案件編號) + ([c.委員1, c.委員2].filter(x => x).length ? '　委員 ' + esc([c.委員1, c.委員2].filter(x => x).join('、')) : '') + '</span></button>').join('');
+  if (!list.length) h += '<div class="none">這天沒有行程</div>';
+  if (D.rec[ds]) h += '<div class="dl r">📝 紀錄表期限：' + esc(units(D.rec[ds])) + '</div>';
+  if (D.imp[ds]) h += '<div class="dl i">⚠️ 報部改善期限：' + esc(units(D.imp[ds])) + '</div>';
+  if (canEdit()) h += '<button type="button" class="b add" id="calAdd">＋ 新增這天的行程</button>';
+  $('calDay').innerHTML = h;
+}
+$('calDay').addEventListener('click', e => {
+  const ci = e.target.closest('.ci'); if (ci) return openCase(ci.dataset.id);
+  if (e.target.closest('#calAdd')) openCase(null, S.calSel);
+});
+const calMobile = () => matchMedia('(max-width: 640px)').matches;
 $('undated').addEventListener('click', e => { const ch = e.target.closest('.chip'); if (ch) openCase(ch.dataset.id); });
 $('grid').addEventListener('click', e => {
+  // 手機：點格子（含色條）只選取日期，行程在下方清單點開
+  if (calMobile()) { const cell = e.target.closest('.cell'); if (cell) { S.calSel = cell.dataset.date; renderCalDay(); } return; }
   const more = e.target.closest('[data-more]');
   if (more) { const cell = more.closest('.cell'); cell.classList.toggle('open'); more.textContent = cell.classList.contains('open') ? '收合' : '+' + cell.querySelectorAll('.chip.x').length + ' 件'; return; }
   const chip = e.target.closest('.chip');
