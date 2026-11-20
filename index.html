@@ -1088,9 +1088,10 @@ async function loadSaved(c){
 /** 已儲存的紀錄表原檔清單（可開啟、下載；有編輯權限者可刪除上錯的檔案） */
 function renderSavedFiles(id){
   const r=S.saved||{};
-  $('savedFiles').innerHTML = (r.files||[]).length ? r.files.map(f=>`<div class="fileitem">📎 <b>${esc(f.檔名)}</b><span class="muted">${esc(R(f.上傳時間))}　${esc(f.上傳者)}${f.大小?'　'+Math.max(1,Math.round(f.大小/1024))+' KB':''}</span><a class="mini" href="https://drive.google.com/file/d/${encodeURIComponent(f.檔案ID)}/view" target="_blank" rel="noopener" style="text-decoration:none">開啟</a><button class="mini" data-fid="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}">下載</button>${canEdit()?`<button class="mini" data-delf="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}" style="color:var(--err)">刪除</button>`:''}</div>`).join('')
+  $('savedFiles').innerHTML = (r.files||[]).length ? r.files.map(f=>`<div class="fileitem">📎 <b>${esc(f.檔名)}</b><span class="muted">${esc(R(f.上傳時間))}　${esc(f.上傳者)}${f.大小?'　'+Math.max(1,Math.round(f.大小/1024))+' KB':''}</span><a class="mini" href="https://drive.google.com/file/d/${encodeURIComponent(f.檔案ID)}/view" target="_blank" rel="noopener" style="text-decoration:none">開啟</a><button class="mini" data-fid="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}">下載</button>${canEdit()?`<button class="mini" data-refid="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}" title="用系統裡的這份原檔重新解析，不必下載再上傳">重新讀取</button>`:''}${canEdit()?`<button class="mini" data-delf="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}" style="color:var(--err)">刪除</button>`:''}</div>`).join('')
     : '<span class="muted">此案件尚未上傳紀錄表原檔</span>';
   $('savedFiles').querySelectorAll('[data-fid]').forEach(b=>b.onclick=()=>downloadSaved(b.dataset.fid, b.dataset.fn, b));
+  $('savedFiles').querySelectorAll('[data-refid]').forEach(b=>b.onclick=()=>rereadSaved(b.dataset.refid, b.dataset.fn, b));
   $('savedFiles').querySelectorAll('[data-delf]').forEach(b=>b.onclick=()=>deleteSaved(id, b.dataset.delf, b.dataset.fn));
 }
 /** 刪除上錯或要更正的紀錄表原檔：檔案移到雲端硬碟垃圾桶（30 天內可救回），成績與缺失不受影響 */
@@ -1105,6 +1106,18 @@ async function deleteSaved(id, fid, name){
     renderCases(); toast('已刪除原檔：'+name, 4000);
     if(window.REC_onSaved) window.REC_onSaved(id);
   }catch(e){ done(); toast('刪除失敗：'+(e.message||e), 6000); }
+}
+/** 重新讀取已存的原檔：從系統取回檔案後照上傳流程解析，儲存時不會再附一次檔案 */
+async function rereadSaved(fid, name, btn){
+  if((S.file || (S.rec && !S.rec._fromSaved)) && !confirm('畫面上尚未儲存的內容會被這份原檔的解析結果取代，確定？')) return;
+  btn.disabled=true; btn.textContent='讀取中…';
+  try{
+    const f=await api('djFile',{fileId:fid});
+    const bin=atob(f.base64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+    S.file=null; S.rec=null;
+    await addFile(new File([u], f.name||name, {type:f.mimeType||''}), fid);
+  }catch(e){ toast('讀取失敗：'+(e.message||e),5000); }
+  btn.disabled=false; btn.textContent='重新讀取';
 }
 async function downloadSaved(fid, name, btn){
   btn.disabled=true; btn.textContent='下載中…';
@@ -1128,12 +1141,12 @@ function setupDrop(){
   drop.ondragleave=()=>drop.classList.remove('over');
   drop.ondrop=e=>{ e.preventDefault(); drop.classList.remove('over'); if(e.dataTransfer.files[0]) addFile(e.dataTransfer.files[0]); };
 }
-async function addFile(file){
+async function addFile(file, savedFid){
   if(!S.sel){ toast('請先在左側選擇案件'); return; }
   const ext=(file.name.split('.').pop()||'').toLowerCase();
   if(['odt','docx','doc','pdf'].indexOf(ext)<0){ toast('只接受 .odt、.docx、.doc、.pdf'); return; }
   if(file.size>MAX_FILE){ toast('檔案超過 20MB'); return; }
-  S.file={file, name:file.name, ext, status:'解析中…', lines:[]};
+  S.file={file, name:file.name, ext, status:'解析中…', lines:[], savedFid:savedFid||''};   // savedFid：系統已存的原檔，儲存時不重傳
   S.rec=null;
   renderFile();
   try{
@@ -1147,7 +1160,7 @@ async function addFile(file){
 }
 function renderFile(){
   const f=S.file;
-  $('fileBox').innerHTML = f ? `<div class="fileitem">📄 <b>${esc(f.name)}</b><span class="muted">${Math.max(1,Math.round(f.file.size/1024))} KB｜${esc(f.status)}</span><button class="mini" id="fileClr">移除</button></div>` : '';
+  $('fileBox').innerHTML = f ? `<div class="fileitem">📄 <b>${esc(f.name)}</b><span class="muted">${f.savedFid?'系統原檔｜':''}${Math.max(1,Math.round(f.file.size/1024))} KB｜${esc(f.status)}</span><button class="mini" id="fileClr">移除</button></div>` : '';
   if(f) $('fileClr').onclick=()=>{ S.file=null; S.rec=null; renderFile(); renderResult(); renderCmp(); updateSave(); if(S.sel) loadSaved(S.sel); };
   $('rawBox').style.display = f && f.lines.length ? '' : 'none';
   $('rawText').textContent = f ? f.lines.join('\n') : '';
@@ -1485,7 +1498,7 @@ const SAVE_TXT='儲存結果到資料庫（含紀錄表原檔）';
 function updateSave(){
   $('rBtnSave').disabled=!(S.sel && S.rec);
   $('saveHint').classList.remove('ok');
-  $('saveHint').textContent = !S.sel ? '請選擇案件' : !S.rec ? '請上傳紀錄表或手動輸入' : (S.file ? '將儲存：成績、缺失、完整內容與紀錄表原檔' : '將儲存：成績、缺失與完整內容（未附原檔）');
+  $('saveHint').textContent = !S.sel ? '請選擇案件' : !S.rec ? '請上傳紀錄表或手動輸入' : (S.file && !S.file.savedFid ? '將儲存：成績、缺失、完整內容與紀錄表原檔' : S.file ? '將儲存：成績、缺失與完整內容（原檔已在系統，不重複上傳）' : '將儲存：成績、缺失與完整內容（未附原檔）');
 }
 async function save(force){
   if(!S.sel||!S.rec) return;
@@ -1500,7 +1513,7 @@ async function save(force){
   $('rBtnSave').disabled=true; $('rBtnSave').textContent='儲存中…';
   const caseId=args.id, done=busy('儲存「'+S.sel['工程名稱']+'」中…');
   try{
-    if(S.file) args.file={ name:S.file.name, mimeType:S.file.file.type || ({odt:'application/vnd.oasis.opendocument.text',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',doc:'application/msword',pdf:'application/pdf'})[S.file.ext], base64: await blobToB64(S.file.file) };
+    if(S.file && !S.file.savedFid) args.file={ name:S.file.name, mimeType:S.file.file.type || ({odt:'application/vnd.oasis.opendocument.text',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',doc:'application/msword',pdf:'application/pdf'})[S.file.ext], base64: await blobToB64(S.file.file) };
     const res=await api('djSaveRecord', args);
     done();
     if(res.needConfirm){
