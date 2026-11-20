@@ -1442,14 +1442,28 @@ const CMP = [
   ['承包商', f=>f.contractor, true],
   ['委員1', f=>committees(f.committee)[0]||'', true],
   ['委員2', f=>committees(f.committee)[1]||'', true],
-  ['領隊', f=>{ const m=String(f.leader||'').match(/領隊[：:]\s*([^\s(（\n]+)/); return m?m[1]:''; }, true],
+  ['領隊', f=>{ const m=String(f.leader||'').match(/領隊[：:]\s*([^\s(（\n]+)/); return m?m[1]:innerMember(f.committee); }, true],
   ['工作人員', f=>{ const m=String(f.leader||'').match(/工作人員[：:]\s*([^\n]+)/); return m?m[1].trim():''; }, true],
   ['開工日期', f=>rocToIso(String(f.period||'')), true]
 ];
+/** 委員欄拆名單。查核紀錄寫成「內聘：郭殷孝　外聘：王文禀、李榮春」時，
+ *  內聘是機關自己的人（即領隊），系統的委員1、委員2 只放外聘委員 */
 function committees(s){
-  return String(s||'').replace(/內聘[：:]\s*[(（]?無[)）]?/g,'').replace(/(內聘|外聘)[：:]/g,'、').split(/[、,，\s]+/).map(x=>x.trim()).filter(x=>/^[一-鿿]{2,4}$/.test(x)&&x!=='無');
+  s=String(s||'');
+  if(/外聘[：:]/.test(s)) s=s.split(/外聘[：:]/).slice(1).join('、').replace(/內聘[：:][^外]*/g,'');
+  return s.replace(/內聘[：:]\s*[(（]?無[)）]?/g,'').replace(/(內聘|外聘)[：:]/g,'、').split(/[、,，\s]+/).map(x=>x.trim()).filter(x=>/^[一-鿿]{2,4}$/.test(x)&&x!=='無');
 }
-const cmpEq = (k,a,b) => { if(k==='發包預算'||k==='契約金額'){ const x=num(a), y=num(b); return x!=null&&y!=null&&Math.abs(x-y)<0.6; } return nameKey(a)===nameKey(b); };
+/** 「內聘：○○○」的姓名（紀錄表沒有領隊欄時當作領隊） */
+function innerMember(s){ const m=String(s||'').match(/內聘[：:]\s*([一-鿿]{2,4})(?![一-鿿])/); return m&&m[1]!=='無'?m[1]:''; }
+/** 姓名比對忽略職稱：「郭殷孝」與「郭副處長殷孝」、「陳彥圖」與「陳正工程司彥圖」視為同一人（姓相同、名字依序出現） */
+function sameName(a,b){
+  a=nameKey(a); b=nameKey(b); if(a===b) return true;
+  const [s,l]=a.length<=b.length?[a,b]:[b,a];
+  if(s.length<2 || s[0]!==l[0]) return false;
+  let j=1; for(let i=1;i<l.length&&j<s.length;i++) if(l[i]===s[j]) j++;
+  return j===s.length && l.endsWith(s.slice(-1));
+}
+const cmpEq = (k,a,b) => { if(k==='發包預算'||k==='契約金額'){ const x=num(a), y=num(b); return x!=null&&y!=null&&Math.abs(x-y)<0.6; } if(k==='領隊') return String(a).split('、').every(x=>String(b).split('、').some(y=>sameName(x,y))); return nameKey(a)===nameKey(b); };
 function renderCmp(){
   const r=S.rec, c=S.sel;
   if(!c||!r||!r.fields||!Object.values(r.fields).some(Boolean)){ $('cmpBox').innerHTML='<div class="empty-hint">'+(r&&r._fromSaved?'目前顯示已儲存的結果；上傳紀錄表後可比對。':'上傳紀錄表後自動比對。')+'</div>'; S.cmp=[]; return; }
