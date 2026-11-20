@@ -1627,6 +1627,19 @@ let recStarted=false;
 window.REC = {
   start(){ recStarted=true; recStart(); },
   reload(){ if(recStarted) loadInit(); },   // 主頁資料異動後重新讀取案件清單
+  /** 主頁存檔後立即套用到本頁案件清單（不等背景重新讀取，名稱、日期、委員等馬上更新） */
+  patch(c){
+    if(!c || !c['案件編號']) return;
+    const i=S.cases.findIndex(x=>x['案件編號']===c['案件編號']);
+    if(c['狀態']==='已取消' || c['狀態']==='已作廢'){ if(i>=0) S.cases.splice(i,1); }
+    else if(i>=0) Object.keys(c).forEach(k=>{ if(k!=='原檔' && k!=='缺失數' && k!=='缺失未建立') S.cases[i][k]=c[k]; });
+    else S.cases.push(Object.assign({ 原檔:0, 缺失數:'', 缺失未建立:false }, c));
+    if(!recStarted) return;
+    const cur = S.sel && S.cases.find(x=>x['案件編號']===S.sel['案件編號']);
+    if(S.sel && !cur){ S.sel=null; $('selectedCase').innerHTML=''; }
+    else if(cur){ S.sel=cur; renderSelHead(cur); renderCmp(); }
+    renderCases();
+  },
   open(id){ PRE_ID=id||''; preDone=false; const c=S.cases.find(x=>x['案件編號']===id); if(c){ preDone=true; focusCase(c); } }
 };
 window.__REC_parse = lines => parseRecord(lines);   // 測試用
@@ -3742,6 +3755,7 @@ async function save(force) {
     if (cy !== S.year) {
       // 存到別的年度：自動切換到該年度並跳到該月份，畫面立即看得到
       S.month = String(r.case.日期 || '').slice(0, 7) || null;
+      if (window.REC && REC.patch) REC.patch(r.case);
       await boot(cy);
       toast(msg + '（已切換到 ' + cy + ' 年度）', 3500);
     } else { upsert(r.case); toast(msg); render(); }
@@ -3751,6 +3765,7 @@ async function save(force) {
 }
 function showErr(m) { $('dlgErr').textContent = m; $('dlgErr').classList.remove('hide'); }
 function upsert(c) {
+  if (window.REC && REC.patch) REC.patch(c);   // 督導查核紀錄頁的案件清單同步更新
   const i = S.cases.findIndex(x => x.案件編號 === c.案件編號);
   if (String(+c.年度) !== S.year) { if (i >= 0) S.cases.splice(i, 1); return; }
   if (i >= 0) S.cases[i] = Object.assign({}, S.cases[i], c); else S.cases.push(c);
