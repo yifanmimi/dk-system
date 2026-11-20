@@ -821,7 +821,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
   #v-rec .items .c-del button{width:44px;height:44px;padding:0}
   #v-rec .items tr:not([data-i]) td{display:block;border:0}
 }
-#v-rec .checks{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:3px;font-size:13px}
+#v-rec .checks{margin:0 0 10px;padding:0;list-style:none;display:grid;gap:3px;font-size:13px}
 #v-rec .checks li{padding:4px 10px;border-radius:6px}
 #v-rec .checks li.warn{background:var(--warn-bg);color:var(--warn)}
 #v-rec .checks li.err{background:var(--err-bg);color:var(--err)}
@@ -1382,6 +1382,7 @@ function renderResult(){
   const ro = !canEdit();
   const lst = (k,label) => `<div class="sub">${label}<span class="muted" style="font-weight:400">（一行一條，共 ${(r[k]||[]).length} 條）</span></div><textarea data-list="${k}" rows="${Math.min(10,Math.max(2,(r[k]||[]).length+1))}" ${ro?'disabled':''}>${esc((r[k]||[]).join('\n'))}</textarea>`;
   $('resultBox').innerHTML = `
+    <ul class="checks" id="checks"></ul>
     <div class="scorebox"><label>分數 <input type="text" id="rScore" value="${esc(r.score)}" ${ro?'disabled':''} placeholder="例 82 或 不計分"></label><span class="grade" id="rGrade">${esc(gradeOf(r.score))}</span>
       <span class="muted" id="rSum"></span></div>
     ${lst('good','優點')}
@@ -1396,8 +1397,7 @@ function renderResult(){
     ${lst('design','規劃設計問題及建議')}
     ${lst('other','其他建議')}
     <div class="sub">檢驗拆驗</div><textarea id="rInspect" rows="2" ${ro?'disabled':''}>${esc(r.inspect)}</textarea>
-    ${r.kind==='查核'||r.quality?`<div class="sub">品質指標</div><textarea id="rQuality" rows="2" ${ro?'disabled':''}>${esc(r.quality)}</textarea>`:''}
-    <ul class="checks" id="checks"></ul>`;
+    ${r.kind==='查核'||r.quality?`<div class="sub">品質指標</div><textarea id="rQuality" rows="2" ${ro?'disabled':''}>${esc(r.quality)}</textarea>`:''}`;
   const box=$('resultBox');
   $('rScore').oninput=e=>{ r.score=e.target.value.trim(); $('rGrade').textContent=gradeOf(r.score); renderChecks(); };
   box.querySelectorAll('[data-list]').forEach(t=>t.oninput=()=>{ r[t.dataset.list]=t.value.split('\n').map(s=>s.trim()).filter(Boolean); renderChecks(); });
