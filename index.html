@@ -788,6 +788,14 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
 #v-rec .items .w-del{width:2.8em}
 #v-rec .items tr.flag td{background:#fffaf0}
 #v-rec .codehint{font-size:11.5px;color:var(--muted);margin-top:2px}
+/* 儲存中遮罩：擋住畫面操作，顯示已等待秒數 */
+.recbusy{position:fixed;inset:0;z-index:60;background:rgba(20,30,40,.35);display:flex;align-items:center;justify-content:center;padding:16px}
+.recbusy[hidden]{display:none}
+.recbusy>div{background:#fff;border-radius:12px;padding:22px 26px;display:grid;justify-items:center;gap:8px;min-width:240px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center}
+.recbusy .spin{width:34px;height:34px;border:4px solid #dbe5f1;border-top-color:#1f5fa8;border-radius:50%;animation:recspin 1s linear infinite}
+@keyframes recspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.recbusy .spin{animation-duration:3s}}
+#v-rec #saveHint.ok{color:#2e7d4f;font-weight:600}
 /* 手機：缺點表改成每筆一張卡片（第一行缺失內容占滿寬度，第二行代碼／等級／扣點／刪除），
    輸入框 16px 字避免 iPhone 自動放大，可點範圍至少 44px */
 @media (max-width:640px){
@@ -905,6 +913,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
   <button class="primary" id="rBtnSave" disabled>儲存結果到資料庫（含紀錄表原檔）</button>
 </div>
 <div class="toast" id="rtoast"></div>
+<div class="recbusy" id="recBusy" hidden role="alertdialog" aria-modal="true" aria-labelledby="recBusyMsg"><div><div class="spin" aria-hidden="true"></div><b id="recBusyMsg">儲存中…</b><span class="muted" id="recBusySub">請勿切換案件或關閉頁面</span></div></div>
 <datalist id="codeList"></datalist>
 <script>
 window.REC_EMBED = true;
@@ -1066,9 +1075,7 @@ async function loadSaved(c){
   let r; try{ r=await gs('getRecord', id); }catch(e){ $('savedFiles').innerHTML='<span class="muted">讀取失敗：'+esc(e.message||e)+'</span>'; return; }
   if(!S.sel || S.sel['案件編號']!==id) return;
   S.saved=r;
-  $('savedFiles').innerHTML = (r.files||[]).length ? r.files.map(f=>`<div class="fileitem">📎 <b>${esc(f.檔名)}</b><span class="muted">${esc(R(f.上傳時間))}　${esc(f.上傳者)}${f.大小?'　'+Math.max(1,Math.round(f.大小/1024))+' KB':''}</span><a class="mini" href="https://drive.google.com/file/d/${encodeURIComponent(f.檔案ID)}/view" target="_blank" rel="noopener" style="text-decoration:none">開啟</a><button class="mini" data-fid="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}">下載</button></div>`).join('')
-    : '<span class="muted">此案件尚未上傳紀錄表原檔</span>';
-  $('savedFiles').querySelectorAll('[data-fid]').forEach(b=>b.onclick=()=>downloadSaved(b.dataset.fid, b.dataset.fn, b));
+  renderSavedFiles(id);
   if(S.file || S.rec) return;   // 已上傳新檔或已開始輸入就不覆蓋
   const ct=r.content;
   if(ct && ct.v===2){ S.rec=JSON.parse(JSON.stringify(ct)); S.rec._fromSaved=true; }
@@ -1077,6 +1084,27 @@ async function loadSaved(c){
       bad:(r.defects||[]).map(d=>{ const p=splitDefect(d.缺失紀錄); return {text:p.text, code:String(d.缺失代碼||p.code||''), level:String(d.缺失等級||p.level||''), points:d.扣點===''||d.扣點==null?'':String(d.扣點)}; }) };
   }
   renderResult(); renderCmp(); updateSave();
+}
+/** 已儲存的紀錄表原檔清單（可開啟、下載；有編輯權限者可刪除上錯的檔案） */
+function renderSavedFiles(id){
+  const r=S.saved||{};
+  $('savedFiles').innerHTML = (r.files||[]).length ? r.files.map(f=>`<div class="fileitem">📎 <b>${esc(f.檔名)}</b><span class="muted">${esc(R(f.上傳時間))}　${esc(f.上傳者)}${f.大小?'　'+Math.max(1,Math.round(f.大小/1024))+' KB':''}</span><a class="mini" href="https://drive.google.com/file/d/${encodeURIComponent(f.檔案ID)}/view" target="_blank" rel="noopener" style="text-decoration:none">開啟</a><button class="mini" data-fid="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}">下載</button>${canEdit()?`<button class="mini" data-delf="${esc(f.檔案ID)}" data-fn="${esc(f.檔名)}" style="color:var(--err)">刪除</button>`:''}</div>`).join('')
+    : '<span class="muted">此案件尚未上傳紀錄表原檔</span>';
+  $('savedFiles').querySelectorAll('[data-fid]').forEach(b=>b.onclick=()=>downloadSaved(b.dataset.fid, b.dataset.fn, b));
+  $('savedFiles').querySelectorAll('[data-delf]').forEach(b=>b.onclick=()=>deleteSaved(id, b.dataset.delf, b.dataset.fn));
+}
+/** 刪除上錯或要更正的紀錄表原檔：檔案移到雲端硬碟垃圾桶（30 天內可救回），成績與缺失不受影響 */
+async function deleteSaved(id, fid, name){
+  if(!confirm('刪除紀錄表原檔「'+name+'」？\n\n檔案會移到系統擁有者的雲端硬碟垃圾桶（30 天內可救回）。\n成績、缺失不會變動；要更正內容請重新上傳正確的紀錄表後儲存。')) return;
+  const done=busy('刪除原檔中…');
+  try{
+    const r=await api('djDeleteFile',{fileId:fid});
+    done();
+    if(S.sel && S.sel['案件編號']===id){ S.saved=Object.assign(S.saved||{}, {files:r.files||[]}); renderSavedFiles(id); }
+    const c=S.cases.find(x=>x['案件編號']===id); if(c) c['原檔']=(r.files||[]).length;
+    renderCases(); toast('已刪除原檔：'+name, 4000);
+    if(window.REC_onSaved) window.REC_onSaved(id);
+  }catch(e){ done(); toast('刪除失敗：'+(e.message||e), 6000); }
 }
 async function downloadSaved(fid, name, btn){
   btn.disabled=true; btn.textContent='下載中…';
@@ -1442,6 +1470,7 @@ function renderCmp(){
 const SAVE_TXT='儲存結果到資料庫（含紀錄表原檔）';
 function updateSave(){
   $('rBtnSave').disabled=!(S.sel && S.rec);
+  $('saveHint').classList.remove('ok');
   $('saveHint').textContent = !S.sel ? '請選擇案件' : !S.rec ? '請上傳紀錄表或手動輸入' : (S.file ? '將儲存：成績、缺失、完整內容與紀錄表原檔' : '將儲存：成績、缺失與完整內容（未附原檔）');
 }
 async function save(force){
@@ -1455,20 +1484,38 @@ async function save(force){
     source: S.file ? S.file.name : ((S.saved&&S.saved.content&&S.saved.content.source)||'') };
   const args={ id:S.sel['案件編號'], score:r.score, defects:r.bad.map(d=>({text:d.text, code:d.code, level:d.level, points:d.points})), content, info, force:!!force };
   $('rBtnSave').disabled=true; $('rBtnSave').textContent='儲存中…';
+  const caseId=args.id, done=busy('儲存「'+S.sel['工程名稱']+'」中…');
   try{
     if(S.file) args.file={ name:S.file.name, mimeType:S.file.file.type || ({odt:'application/vnd.oasis.opendocument.text',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',doc:'application/msword',pdf:'application/pdf'})[S.file.ext], base64: await blobToB64(S.file.file) };
     const res=await api('djSaveRecord', args);
+    done();
     if(res.needConfirm){
       $('rBtnSave').textContent=SAVE_TXT; updateSave();
       if(confirm(`此案件已有成績（${res.oldScore||'無'}）及 ${res.existing} 筆缺失，儲存後會以本次內容取代，確定？`)) return save(true);
       return;
     }
-    toast('已儲存：成績 '+(r.score||'—')+'、缺失 '+res.defects+' 筆'+(res.file?'、原檔 '+res.file:''), 4000);
-    Object.assign(S.sel, { 成績: r.score, 缺失數: String(res.defects||''), 缺失未建立: false, 原檔: (S.sel['原檔']||0)+(res.file?1:0) }, info);
-    S.file=null; S.rec._fromSaved=true; renderFile(); renderCases(); selectCase(S.sel['案件編號']);
-    if(window.REC_onSaved) window.REC_onSaved(S.sel['案件編號']);
-  }catch(e){ toast('儲存失敗：'+(e.message||e), 5000); }
-  $('rBtnSave').textContent=SAVE_TXT; updateSave();
+    const msg='已儲存 '+caseId+'：成績 '+(r.score||'—')+'、缺失 '+res.defects+' 筆'+(res.file?'、原檔 '+res.file:'');
+    toast(msg, 5000);
+    const c=S.cases.find(x=>x['案件編號']===caseId);   // 以開始儲存時的案件為準
+    if(c) Object.assign(c, { 成績: r.score, 缺失數: String(res.defects||''), 缺失未建立: false, 原檔: (+c['原檔']||0)+(res.file?1:0) }, info);
+    if(S.sel && S.sel['案件編號']===caseId){ S.file=null; S.rec._fromSaved=true; renderFile(); selectCase(caseId); }
+    renderCases();
+    if(window.REC_onSaved) window.REC_onSaved(caseId);
+    $('rBtnSave').textContent=SAVE_TXT; updateSave();
+    // 完成訊息留在下方按鈕列，直到切換案件或再修改
+    const t=new Date(); $('saveHint').textContent='✔ '+msg+'（'+t.getHours()+':'+String(t.getMinutes()).padStart(2,'0')+'）'; $('saveHint').classList.add('ok');
+    return;
+  }catch(e){ done(); toast('儲存失敗：'+(e.message||e), 6000); $('saveHint').textContent='✖ 儲存失敗：'+(e.message||e); $('saveHint').classList.remove('ok'); }
+  $('rBtnSave').textContent=SAVE_TXT; $('rBtnSave').disabled=!(S.sel && S.rec);
+}
+/** 顯示「處理中」遮罩（擋住點選、離開頁面前提醒），回傳關閉函式 */
+function busy(msg){
+  const t0=Date.now(), el=$('recBusy');
+  $('recBusyMsg').textContent=msg; $('recBusySub').textContent='請勿切換案件或關閉頁面'; el.hidden=false;
+  const tm=setInterval(()=>{ $('recBusySub').textContent='已等待 '+Math.round((Date.now()-t0)/1000)+' 秒，請勿切換案件或關閉頁面'; },1000);
+  const warn=e=>{ e.preventDefault(); e.returnValue=''; };
+  window.addEventListener('beforeunload', warn);
+  return ()=>{ clearInterval(tm); el.hidden=true; window.removeEventListener('beforeunload', warn); };
 }
 $('rBtnSave').onclick=()=>save(false);
 
