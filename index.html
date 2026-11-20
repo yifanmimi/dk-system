@@ -531,7 +531,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
       <button class="b" id="btnCsv">下載 CSV</button><button class="b" id="btnXlsx">下載 Excel</button>
     </div>
     <div class="tbl"><table><thead><tr>
-      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th><th data-k="檢驗拆驗">檢驗拆驗</th><th>改善檔案</th><th>紀錄表</th>
+      <th data-k="日期">日期</th><th data-k="項目">項目</th><th data-k="單位">單位</th><th data-k="工程名稱">工程名稱</th><th data-k="委員">委員</th><th data-k="領隊">領隊</th><th data-k="狀態">狀態</th><th data-k="紀錄表期限">紀錄表期限</th><th data-k="報部改善期限">報部改善期限</th><th data-k="檢驗拆驗">檢驗拆驗</th><th data-k="改善檔案">改善檔案</th><th data-k="紀錄表">紀錄表</th>
     </tr></thead><tbody id="listBody"></tbody></table></div>
   </section>
 
@@ -2364,7 +2364,11 @@ function unitRank(name) {
 }
 function cmpUnit(a, b) { return unitRank(a) - unitRank(b) || String(a).localeCompare(String(b), 'zh-Hant-TW'); }
 window.dkUnitRank = unitRank;   // 督導紀錄分頁共用
-function sortVal(c, k) { return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(stOf(c)) : (c[k] == null ? '' : c[k]); }
+/** 排序值；改善檔案、紀錄表依「有沒有檔案」排（有檔 1、舊連結 0.5、沒有 0） */
+function sortVal(c, k) {
+  if (k === '改善檔案') return +c.改善檔數 >= 1 ? 1 : /^https?:\/\//i.test(c.改善檔案 || '') ? 0.5 : 0;
+  if (k === '紀錄表') return c.原檔ID ? 1 : 0;
+  return k === '單位' ? unitRank(c.單位) : k === '委員' ? [c.委員1, c.委員2].filter(x => x).join('、') : k === '狀態' ? ST_ORDER.indexOf(stOf(c)) : (c[k] == null ? '' : c[k]); }
 function cmpCase(a, b) {
   // 日期未定的案件固定排在最上面（方便補排日期）；彼此間依預定月份、工程名稱
   const ua = !a.日期, ub = !b.日期;
