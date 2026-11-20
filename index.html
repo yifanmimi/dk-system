@@ -2020,6 +2020,67 @@ const CODESUG = (() => {
     return out;
   }
 
+  /** TF-IDF 向量（sublinear tf、L2 正規化）：回傳 [[特徵序號, 值], …] */
+  function tfidf(text, vocab, idf, ng) {
+    const tf = new Map();
+    ngrams(text, ng[0], ng[1]).forEach(g => {
+      const f = vocab[g];
+      if (f !== undefined) tf.set(f, (tf.get(f) || 0) + 1);
+    });
+    let norm = 0;
+    const feats = [];
+    tf.forEach((c, f) => { const v = (1 + Math.log(c)) * idf[f]; feats.push([f, v]); norm += v * v; });
+    norm = Math.sqrt(norm) || 1;
+    return feats.map(([f, v]) => [f, v / norm]);
+  }
+
+  /** 線性分數：截距＋Σ 特徵值×權重（W 為 特徵序號 → [類別序號, 權重, …]） */
+  function linear(feats, W, b) {
+    const sc = b.slice();
+    feats.forEach(([f, x]) => {
+      const w = W[f];
+      if (!w) return;
+      for (let i = 0; i < w.length; i += 2) sc[w[i]] += x * w[i + 1];
+    });
+    return sc;
+  }
+
+  /** 制式條文向量的反向索引（每個模型只建一次）：特徵 → [[細項代碼序號, 值], …] */
+  const simIndex = new WeakMap();
+  function getSimIndex(M) {
+    let ix = simIndex.get(M);
+    if (ix) return ix;
+    const S = M.sim, ng = M.ngram;
+    ix = new Map();
+    S.texts.forEach((t, k) => {
+      tfidf(t, S.vocab, S.idf, ng).forEach(([f, v]) => {
+        if (!ix.has(f)) ix.set(f, []);
+        ix.get(f).push([S.codes[k], v]);
+      });
+    });
+    simIndex.set(M, ix);
+    return ix;
+  }
+
+  /** 所有代碼的分數（第二版為融合分數） */
+  function scores(M, text) {
+    const feats = tfidf(text, M.vocab, M.idf, M.ngram);
+    const sc = linear(feats, M.W, M.b);
+    if (!M.L2 || !M.sim || !M.fuse) return sc;          // 第一版模型
+    const s2 = linear(feats, M.L2.W, M.L2.b);
+    const min2 = Math.min.apply(null, s2);
+    const map = M.L2.map;
+    for (let c = 0; c < sc.length; c++) sc[c] += M.fuse.L2 * (map[c] >= 0 ? s2[map[c]] : min2);
+    const ix = getSimIndex(M);
+    const sim = new Float64Array(sc.length);
+    tfidf(text, M.sim.vocab, M.sim.idf, M.ngram).forEach(([f, x]) => {
+      const lst = ix.get(f);
+      if (lst) lst.forEach(([c, v]) => { sim[c] += x * v; });
+    });
+    for (let c = 0; c < sc.length; c++) sc[c] += M.fuse.sim * sim[c];
+    return sc;
+  }
+
   /**
    * 建議代碼
    * @param {Object} M 模型 JSON
@@ -2029,23 +2090,7 @@ const CODESUG = (() => {
    */
   function suggest(M, raw, topN) {
     const text = clean(raw);
-    const tf = new Map();
-    ngrams(text, M.ngram[0], M.ngram[1]).forEach(g => {
-      const f = M.vocab[g];
-      if (f !== undefined) tf.set(f, (tf.get(f) || 0) + 1);
-    });
-    // TF-IDF（sublinear）＋ L2 正規化
-    let norm = 0;
-    const feats = [];
-    tf.forEach((c, f) => { const v = (1 + Math.log(c)) * M.idf[f]; feats.push([f, v]); norm += v * v; });
-    norm = Math.sqrt(norm) || 1;
-    const sc = M.b.slice();
-    feats.forEach(([f, v]) => {
-      const w = M.W[f];
-      if (!w) return;
-      const x = v / norm;
-      for (let i = 0; i < w.length; i += 2) sc[w[i]] += x * w[i + 1];
-    });
+    const sc = scores(M, text);
     const idx = sc.map((s, i) => i).sort((a, b) => sc[b] - sc[a]).slice(0, Math.max(topN || 3, 2));
     const gap = sc[idx[0]] - sc[idx[1]];
     const level = !text ? '' : gap >= M.conf['高'] ? '高' : gap >= M.conf['中'] ? '中' : '低';
@@ -2054,7 +2099,7 @@ const CODESUG = (() => {
       list: idx.slice(0, topN || 3).map(i => ({ code: M.classes[i], score: sc[i], std: M.std[M.classes[i]] || '' }))
     };
   }
-  return { clean, writtenCode, ngrams, suggest };
+  return { clean, writtenCode, ngrams, suggest, scores };
 })();
 
 /* ===================== 代碼建議（實驗）分頁 ===================== */
@@ -2074,7 +2119,7 @@ const SUG = (() => {
     return btoa(s);
   }
   function showInfo(info) {
-    $('sgInfo').textContent = M ? '模型版本 ' + ver + '（' + M.classes.length + ' 個代碼）' + (info && info.at ? '，' + info.at.slice(0, 10) + ' 更新' : '') : '尚未上傳模型';
+    $('sgInfo').textContent = M ? '模型版本 ' + ver + '（' + M.classes.length + ' 個代碼' + (M.L2 && M.sim ? '，融合版' : '') + '）' + (info && info.at ? '，' + info.at.slice(0, 10) + ' 更新' : '') : '尚未上傳模型';
   }
   async function load(force) {
     if (M && !force) return M;
