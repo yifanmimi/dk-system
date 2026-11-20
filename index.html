@@ -866,7 +866,7 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
 </details>
 
 <div class="cols">
-  <!-- 左：選擇案件、上傳紀錄表 -->
+  <!-- 左：選擇案件、上傳紀錄表、工程基本資料比對 -->
   <div class="col left">
     <section class="card">
       <h2><span class="step">1</span>選擇案件<span class="sp"></span><span class="muted" id="loadedAt" style="font-weight:400;font-size:12px"></span></h2>
@@ -892,17 +892,17 @@ dialog.msheet::backdrop{background:rgba(15,23,32,.45);overflow:hidden;overscroll
       <div class="sub" style="margin-top:14px">已儲存的紀錄表原檔</div>
       <div class="filebox" id="savedFiles"><span class="muted">請先選擇案件</span></div>
     </section>
+    <section class="card">
+      <h2><span class="step">3</span>工程基本資料比對<span class="sp"></span><span class="muted" style="font-weight:400">勾選「更新」的欄位，儲存時以紀錄表內容寫回資料庫</span></h2>
+      <div id="cmpBox"><div class="empty-hint">上傳紀錄表後自動比對。</div></div>
+    </section>
   </div>
 
-  <!-- 右：結果、比對 -->
+  <!-- 右：督導查核結果 -->
   <div class="col right">
     <section class="card">
-      <h2><span class="step">3</span>督導查核結果（由紀錄表解析，可修改）<span class="sp"></span><span class="muted" id="kindTag"></span></h2>
+      <h2><span class="step">4</span>督導查核結果（由紀錄表解析，可修改）<span class="sp"></span><span class="muted" id="kindTag"></span></h2>
       <div id="resultBox"><div class="empty-hint">選擇案件並上傳紀錄表後，這裡會顯示分數、缺失與委員意見。</div></div>
-    </section>
-    <section class="card">
-      <h2><span class="step">4</span>工程基本資料比對<span class="sp"></span><span class="muted" style="font-weight:400">勾選「更新」的欄位，儲存時以紀錄表內容寫回資料庫</span></h2>
-      <div id="cmpBox"><div class="empty-hint">上傳紀錄表後自動比對。</div></div>
     </section>
   </div>
 </div>
